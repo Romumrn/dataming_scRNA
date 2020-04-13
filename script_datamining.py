@@ -11,6 +11,8 @@ import pandas as pd
 import argparse
 import sys
 import numpy as np
+import matplotlib.pyplot as plt
+import networkx as nx
 
 # Meta informations.
 __version__ = '1'
@@ -94,7 +96,7 @@ def apriori( data, minSupport, nb_transaction, output_file , max_len):
         #create a list of item who pass the threshold
         list_candidat1.append( item[0] )
 
-    list_candidat1 =  list_candidat1[:100] #LINE TEST to compute with 100 genes only !!!!!!!!!!!!!
+    list_candidat1 =  list_candidat1[:1000] #LINE TEST to compute with x genes only !!!!!!!!!!!!!
 
     # 2nd step : Generate Candidat of lenght 2
     current_lenght = 2
@@ -112,6 +114,9 @@ def apriori( data, minSupport, nb_transaction, output_file , max_len):
                 out.write( str(new_result)+'\n')
         position_in_list += 1
 
+    print( '    number of itemsets find : ' ,len(res_candidat2))
+    assoc_rules = calc_assoc_rules(list_resultat_all)
+    print_graph( assoc_rules )
 
     itemsets_prec = res_candidat2
     while current_lenght < max_len:
@@ -143,7 +148,7 @@ def test_auto_apriori( data, C1, res_itemsets_prec, min_support):
     resultat = []
     #extrait la liste d'itemset de la liste itemset et resultat en tuple
     itemsets_prec = list(map(lambda x: list(x[0]), res_itemsets_prec) )
-    print( itemsets_prec)
+    print( '    number of itemsets find : ' ,len(itemsets_prec))
     for add_new_item in C1:
         for itemset in itemsets_prec:
             if add_new_item not in itemset:
@@ -152,10 +157,55 @@ def test_auto_apriori( data, C1, res_itemsets_prec, min_support):
                 if support > min_support:
                     new_res = [(new_item) , support ]
                     resultat.append( new_res )
-                    print( new_res)
             else:
                 pass
     return resultat
+
+def calc_assoc_rules( list_itemsets):
+    """
+    Take results variable and genereate asssociation rules between different genes
+    confidence( X -> Y)= support(X , Y ) / support(X)
+    """
+    """
+    exemple : 
+    ['TRNE', 0.8428571428571429]
+    ['TRNT', 0.8857142857142857]
+    [('VWA1', 'CASZ1'), 0.37142857142857144]
+    [('MMP23B', 'CDK11A'), 0.35714285714285715]
+    [('MMP23B', 'CASZ1'), 0.37142857142857144]
+    """
+    dico_item = {}
+    for item in list_itemsets:
+        if type(item[0]) == str:
+            dico_item[ item[0] ] = { 'support' : item[1] }
+        else: 
+            dico_item[ item[0][0] ][ item[0][1] ] = {  'support' : item[1] , 'confidence' : (item[1] / dico_item[ item[0][0] ]['support']) }  # : support(X , Y ) / support(X) } }
+    return dico_item
+
+def print_graph( asssociation_rules ):
+    G = nx.Graph()
+    G.support = {}
+
+    node_list = []
+    for gene in asssociation_rules.keys():
+        for gene_link in asssociation_rules[gene].keys():
+            if gene_link != 'support' :
+                G.add_edge(gene, gene_link, weight=asssociation_rules[gene][gene_link]['confidence'] )
+
+                node_list.extend( [ gene,gene_link ])
+
+    #uniq element
+    node_list = list(set(node_list)) 
+    
+    
+
+
+    for gene in node_list:
+        G.add_node( gene)
+        G.support[gene] = asssociation_rules[gene]['support']*20
+    #cmap information : https://matplotlib.org/3.1.0/tutorials/colors/colormaps.html
+    nx.draw( G , node_color=  [len( G.edges(n)) for n in G.nodes] ,edge_color= [d['weight']*20 for (u, v, d) in G.edges(data=True)], edge_cmap=plt.cm.Greys, node_cmap=plt.cm.YlGnBu, width = [d['weight']/2 for (u, v, d) in G.edges(data=True)], node_size=[G.support[n]*4 for n in G.nodes], with_labels=True , font_size=5)
+    plt.show()
 
 """
 Executes Apriori algorithm and print its result.
