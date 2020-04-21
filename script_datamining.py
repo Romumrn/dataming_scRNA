@@ -1,18 +1,12 @@
 #! usr/bin/python3
 
-
-"""
-A simple implementation of datamaining algorithm to scRNA seq usage.
-
-"""
-
-
 import pandas as pd
 import argparse
 import sys
 import numpy as np
 import matplotlib.pyplot as plt
 import networkx as nx
+from multiprocessing import Process, Queue, Pool
 
 # Meta informations.
 __version__ = '1'
@@ -23,7 +17,7 @@ __author_email__ = 'romuald.mrn@outlook.fr'
 def parse_args(argv):
     """
     Parse commandline arguments.
-
+    For exemple : python3 script_datamining.py ../count_matrix -r N_unmapped,N_multimapping,N_noFeature,N_ambiguous -s 0.60 -l 5
     """
     parser = argparse.ArgumentParser(description='Blabla help...' )
     parser.add_argument(
@@ -54,6 +48,10 @@ def parse_args(argv):
         '-r', '--rowremove', metavar='str',
         help="remove row of matrix for exemple : -r N_unmapped,N_multimapping,ASAT1 ",
         type=str, default='')
+    parser.add_argument(
+        '-p', '--processor', metavar='int',
+        help="Number of processor avaible (improve speed) ",
+        type=int, default=1)
     args = parser.parse_args(argv)
     return args
 
@@ -78,14 +76,14 @@ def bool_and_normalize_matrix( df ):
     df = (df > df.quantile(0.1) )
     return df
 
-def apriori( data, minSupport, nb_transaction, output_file , max_len):
+def apriori( data, minSupport, nb_transaction, output_file , max_len, processor):
     print('Lauch new apriori')
     out = open("RESULTAT.txt", "w")
     current_lenght = 1
     print( "Generate C"+str(current_lenght))
     list_resultat_all =[]
     # 1st step : generate list of item who pass the threshold 
-    resultat_C1 = new_generate_C1(data, minSupport,nb_transaction )
+    resultat_C1 = generate_C1(data, minSupport,nb_transaction )
     
     list_candidat1 = []
     for item in resultat_C1:
@@ -96,7 +94,7 @@ def apriori( data, minSupport, nb_transaction, output_file , max_len):
         #create a list of item who pass the threshold
         list_candidat1.append( item[0] )
 
-    list_candidat1 =  list_candidat1[:1000] #LINE TEST to compute with x genes only !!!!!!!!!!!!!
+    list_candidat1 =  list_candidat1[:200] #LINE TEST to compute with x genes only !!!!!!!!!!!!!
 
     # 2nd step : Generate Candidat of lenght 2
     current_lenght = 2
@@ -105,8 +103,11 @@ def apriori( data, minSupport, nb_transaction, output_file , max_len):
     position_in_list = 0
     for i in range( position_in_list, len( list_candidat1 )):
         for j in range( position_in_list+1 , len( list_candidat1 )):
-            support = len ( df[(df[ list_candidat1[i]]== True) | (df[list_candidat1[j]] == True)].index) / nb_transaction 
-            if support > minSupport:
+            support = len( df[(df[ list_candidat1[i]]== True) | (df[list_candidat1[j]] == True)].index) / nb_transaction  
+            #regarder 
+            ## calclul de support 
+            # est pareil que dans la version auto ????
+            if support >= minSupport:
                 new_result = [ (list_candidat1[i],list_candidat1[j]) , support ]
                 res_candidat2.append( new_result  )
                 list_resultat_all.append( new_result )
@@ -114,15 +115,20 @@ def apriori( data, minSupport, nb_transaction, output_file , max_len):
                 out.write( str(new_result)+'\n')
         position_in_list += 1
 
+    
     print( '    number of itemsets find : ' ,len(res_candidat2))
     assoc_rules = calc_assoc_rules(list_resultat_all)
-    print_graph( assoc_rules )
+    #print_graph( assoc_rules )
 
     itemsets_prec = res_candidat2
     while current_lenght < max_len:
+        if itemsets_prec == []:
+            print( 'No frequent itemsets avaible')
+            quit()
         current_lenght += 1
         print( "Generate C"+str(current_lenght))
-        result = test_auto_apriori( data, list_candidat1, itemsets_prec, minSupport )
+        result = do_apriori_multip( data, list_candidat1, itemsets_prec, minSupport , processor )
+        print( '    number of itemsets find : ' ,len(result))
         for itemset in result:
             list_resultat_all.append( itemset )
             # Write in out file
@@ -132,7 +138,7 @@ def apriori( data, minSupport, nb_transaction, output_file , max_len):
     return list_resultat_all
     #fichier.close()
 
-def new_generate_C1(data, minSupport, len_transaction):
+def generate_C1(data, minSupport, len_transaction):
     """
     Take count matrix and min support threshold to return Candidat K = 1 
     """
@@ -140,26 +146,58 @@ def new_generate_C1(data, minSupport, len_transaction):
     c1 = []
     for i in data.columns:
         support_values = data[i].sum() / len_transaction
-        if support_values > minSupport :
+        if support_values >= minSupport :
             c1.append(  [i , support_values ] )
     return c1
 
-def test_auto_apriori( data, C1, res_itemsets_prec, min_support):
-    resultat = []
+def auto_apriori_process( args_list ):
+    """
+    Function process 
+    """
+    #unpack list of arg 
+    (data, C1, res_itemsets_prec , min_support ) = args_list
+
     #extrait la liste d'itemset de la liste itemset et resultat en tuple
+    res = []
     itemsets_prec = list(map(lambda x: list(x[0]), res_itemsets_prec) )
-    print( '    number of itemsets find : ' ,len(itemsets_prec))
     for add_new_item in C1:
         for itemset in itemsets_prec:
             if add_new_item not in itemset:
                 new_item = itemset+ [add_new_item]
                 support = df[new_item].all(axis='columns').sum() / nb_transaction 
-                if support > min_support:
+                if support >= min_support:
                     new_res = [(new_item) , support ]
-                    resultat.append( new_res )
+                    res.append( new_res )
             else:
                 pass
-    return resultat
+    return res
+    
+
+def do_apriori_multip(data, C1, res_itemsets_prec, min_support, nb_process):
+    #divise list into X differents lists (depend of number of processor)
+    division_list = int(len(res_itemsets_prec) / nb_process)
+
+    #create pool of process
+    pool = Pool(processes=nb_process)
+    
+    # create list of variable.
+    list_var_pool = []
+    for i in range(nb_process):
+        intemset_prec_split = res_itemsets_prec[i*division_list : (i+1)*division_list]
+        #Si le nb diviseur est pas optimal ajoite la fin de la liste pour qu'elle ne sois pas supp 
+        if len( res_itemsets_prec[ (i+1)*division_list : ] ) < division_list :
+            intemset_prec_split = intemset_prec_split + res_itemsets_prec[ (i+1)*division_list : ]
+        list_var_pool.append( (data, C1, intemset_prec_split , min_support ) )
+    
+    # Use map - blocks until all processes are done.
+
+    res = pool.map(auto_apriori_process, list_var_pool ) 
+    #concatenate 4 list of results into one list
+    results = []
+    for i in res:
+        results = results+i
+    return results
+
 
 def calc_assoc_rules( list_itemsets):
     """
@@ -197,9 +235,6 @@ def print_graph( asssociation_rules ):
     #uniq element
     node_list = list(set(node_list)) 
     
-    
-
-
     for gene in node_list:
         G.add_node( gene)
         G.support[gene] = asssociation_rules[gene]['support']*20
@@ -207,33 +242,36 @@ def print_graph( asssociation_rules ):
     nx.draw( G , node_color=  [len( G.edges(n)) for n in G.nodes] ,edge_color= [d['weight']*20 for (u, v, d) in G.edges(data=True)], edge_cmap=plt.cm.Greys, node_cmap=plt.cm.YlGnBu, width = [d['weight']/2 for (u, v, d) in G.edges(data=True)], node_size=[G.support[n]*4 for n in G.nodes], with_labels=True , font_size=5)
     plt.show()
 
-"""
-Executes Apriori algorithm and print its result.
-"""
-args = parse_args(sys.argv[1:])
-print(args)
-#Import dataset in tsv
-df = pd.read_csv(args.input, sep='\t', index_col=0)
 
-#remove row 
-for_removing = args.rowremove.split(',')
-df = df.drop( for_removing ,axis = 1)
 
-#transform into boolean matrix
-if args.normalize : 
-    matrix_bool = bool_and_normalize_matrix( df )
-else :
-    matrix_bool = bool_matrix( df )
+if __name__ == "__main__":
 
-print(matrix_bool.head())
+    #parse arguments given
+    args = parse_args(sys.argv[1:])
+    print(args)
 
-#define max len 
-if args.max_length:
-    max_len = args.max_length
-else:
-    max_len = len(matrix_bool.columns )
+    #Import dataset in tsv
+    df = pd.read_csv(args.input, sep='\t', index_col=0)
 
-print( "Maximun lenght of itemset is : ", max_len)
+    #remove row 
+    for_removing = args.rowremove.split(',')
+    df = df.drop( for_removing ,axis = 1)
 
-nb_transaction = len(matrix_bool.index)
-res = apriori( matrix_bool, args.min_support, nb_transaction , args.output, max_len)
+    #transform into boolean matrix
+    if args.normalize : 
+        matrix_bool = bool_and_normalize_matrix( df )
+    else :
+        matrix_bool = bool_matrix( df )
+
+    print(matrix_bool.head())
+
+    #define max len 
+    if args.max_length:
+        max_len = args.max_length
+    else:
+        max_len = len(matrix_bool.columns )
+
+    print( "Maximun lenght of itemset is : ", max_len)
+    nb_transaction = len(matrix_bool.index)
+
+    res = apriori( matrix_bool, args.min_support, nb_transaction , args.output, max_len, args.processor)
