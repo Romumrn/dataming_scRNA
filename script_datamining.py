@@ -52,6 +52,9 @@ def parse_args(argv):
         '-p', '--processor', metavar='int',
         help="Number of processor avaible (improve speed) ",
         type=int, default=1)
+    parser.add_argument(
+        '-g', '--graph',  action='store_true',
+        help="Create  graph " )
     args = parser.parse_args(argv)
     return args
 
@@ -93,7 +96,7 @@ def splitlist(li , n):
     return newli
 
 
-def main_apriori( data, minSupport, nb_transaction, output_file , max_len, processor):
+def main_apriori( data, minSupport, nb_transaction, output_file , max_len, processor , graph):
     print('Lauch new apriori')
     out = open("RESULTAT.txt", "w")
     current_lenght = 1
@@ -113,32 +116,12 @@ def main_apriori( data, minSupport, nb_transaction, output_file , max_len, proce
         list_candidat1.append( item[0] )
 
     print( '    number of itemsets find : ' ,len(list_candidat1))
-    list_candidat1 =  list_candidat1[:200] #LINE TEST to compute with x genes only !!!!!!!!!!!!!
+
+
+    list_candidat1 =  list_candidat1[:2000] #LINE TEST to compute with x genes only !!!!!!!!!!!!!
     print( '    new number of itemsets find : ' ,len(list_candidat1))
 
-    # 2nd step : Generate Candidat of lenght 2
-    current_lenght = 2
-    print( "Generate C"+str(current_lenght))
-    res_candidat2 = []
-    position_in_list = 0
-    for i in range( position_in_list, len( list_candidat1 )):
-        for j in range( position_in_list+1 , len( list_candidat1 )):
-            newitem = [ list_candidat1[i] , list_candidat1[j]]
-            support = calcsupport( data, newitem , nb_transaction )
-            if support >= minSupport:
-                new_result = [ (list_candidat1[i],list_candidat1[j]) , support ]
-                res_candidat2.append( new_result  )
-                list_resultat_all.append( new_result )
-                # Write in out file
-                out.write( str(new_result)+'\n')
-        position_in_list += 1
-
-    
-    print( '    number of itemsets find : ' ,len(res_candidat2))
-    assoc_rules = calc_assoc_rules(list_resultat_all)
-    #print_graph( assoc_rules )
-
-    itemsets_prec = res_candidat2
+    itemsets_prec = list_candidat1
     while current_lenght < max_len:
         if itemsets_prec == []:
             print( 'No frequent itemsets avaible')
@@ -151,10 +134,14 @@ def main_apriori( data, minSupport, nb_transaction, output_file , max_len, proce
             list_resultat_all.append( itemset )
             # Write in out file
             out.write( str(itemset)+'\n')
-        itemsets_prec = result
+        if current_lenght == 2 and graph == True:
+            print( "Draw ntework graph")
+            assoc_rules = calc_assoc_rules(list_resultat_all)
+            print_graph( assoc_rules )
+            
+        itemsets_prec = list(map(lambda x: list(x[0]), result) )
     
     return list_resultat_all
-    #fichier.close()
 
 
 def calcsupport( data, item, totlen):
@@ -175,15 +162,17 @@ def generate_C1(data, minSupport, len_transaction, proc):
 
     var_pool = []
     for i in range(proc):
-        var_pool.append( ( list_item_split[1] , data, minSupport , len_transaction ) )
+        print( 'proc. ',i, len(list_item_split[i]) )
+        var_pool.append( ( list_item_split[i] , data, minSupport , len_transaction ) )
     
     #calcul 
     res = pool.map( processC1, var_pool ) 
 
-    #concatenate 4 list of results into one list
+    #concatenate lists of results into one list
     results = []
-    for i in res:
-        results = results+i
+    for subres in res:
+        print( len(subres))
+        results = results+subres
 
     pool.close()
     
@@ -195,7 +184,7 @@ def processC1( args ):
     for i in liitem:
         support_values = data[i].sum() / len_transaction
         if support_values >= minSupport :
-            res.append(  [i , support_values ] )
+            res.append(  [ (i) , support_values ] )
     return res
 
 
@@ -204,15 +193,18 @@ def auto_apriori_process( args_list ):
     Function process 
     """
     #unpack list of arg 
-    (data, C1, res_itemsets_prec , min_support ) = args_list
+    (data, C1, itemsets_prec , min_support ) = args_list
 
-    #extrait la liste d'itemset de la liste itemset et resultat en tuple
     res = []
-    itemsets_prec = list(map(lambda x: list(x[0]), res_itemsets_prec) )
+
     for add_new_item in C1:
         for itemset in itemsets_prec:
             if add_new_item not in itemset:
-                newitem = itemset+ [add_new_item]
+                # if str that mean is the list of C1 for compute lengh 2
+                if type(itemset) == str:
+                    newitem = [itemset , add_new_item ]
+                else:
+                    newitem = itemset+ [add_new_item]
                 support = calcsupport( data, newitem , nb_transaction )
                 if support >= min_support:
                     newres = [(newitem) , support ]
@@ -222,9 +214,6 @@ def auto_apriori_process( args_list ):
     return res
 
 def do_apriori_multip(data, C1, res_itemsets_prec, min_support, nb_process):
-    #divise list into X differents lists (depend of number of processor)
-    division_list = int(len(res_itemsets_prec) / nb_process)
-
     #create pool of process
     pool = Pool(processes=nb_process)
     
@@ -252,36 +241,36 @@ def do_apriori_multip(data, C1, res_itemsets_prec, min_support, nb_process):
 
 def calc_assoc_rules( list_itemsets):
     """
-    Take results variable and genereate asssociation rules between different genes
+    Take results variable and genereate asssociation rules between differents genes
     confidence( X -> Y)= support(X , Y ) / support(X)
-    """
-    """
-    exemple : 
-    ['TRNE', 0.8428571428571429]
-    ['TRNT', 0.8857142857142857]
-    [('VWA1', 'CASZ1'), 0.37142857142857144]
-    [('MMP23B', 'CDK11A'), 0.35714285714285715]
-    [('MMP23B', 'CASZ1'), 0.37142857142857144]
     """
     dico_item = {}
     for item in list_itemsets:
         if type(item[0]) == str:
             dico_item[ item[0] ] = { 'support' : item[1] }
         else: 
-            dico_item[ item[0][0] ][ item[0][1] ] = {  'support' : item[1] , 'confidence' : (item[1] / dico_item[ item[0][0] ]['support']) }  # : support(X , Y ) / support(X) } }
+            dico_item[ item[0][0] ][ item[0][1] ] = {  'support' : item[1], 'confidence' : (item[1] / dico_item[ item[0][0] ]['support']), 
+            'lift' : (item[1]/(dico_item[ item[0][0]]['support']* dico_item[ item[0][1] ]['support']) ) }  
+            # confidence : s(X , Y ) / s(X) 
+            # lift : S(X , Y ) / S(X)*S(Y)
     return dico_item
 
 def print_graph( asssociation_rules ):
     G = nx.Graph()
     G.support = {}
-
+    print( asssociation_rules )
     node_list = []
+    count_threshold = 0
     for gene in asssociation_rules.keys():
         for gene_link in asssociation_rules[gene].keys():
-            if gene_link != 'support' :
-                G.add_edge(gene, gene_link, weight=asssociation_rules[gene][gene_link]['confidence'] )
-
-                node_list.extend( [ gene,gene_link ])
+            if gene_link != 'support' : #le support est enregrister comme une clé dans le dico
+                if asssociation_rules[gene][gene_link]['lift'] >= 1 and asssociation_rules[gene][gene_link]['confidence'] > 0.95:
+                    print( [ gene,gene_link ] )
+                    G.add_edge(gene, gene_link, weight=asssociation_rules[gene][gene_link]['confidence'] )
+                    node_list.extend( [ gene,gene_link ])
+                else: 
+                    count_threshold += 1
+    print( "refused link : " , count_threshold)
 
     #uniq element
     node_list = list(set(node_list)) 
@@ -289,11 +278,14 @@ def print_graph( asssociation_rules ):
     for gene in node_list:
         G.add_node( gene)
         G.support[gene] = asssociation_rules[gene]['support']*20
-    #cmap information : https://matplotlib.org/3.1.0/tutorials/colors/colormaps.html
-    nx.draw( G , node_color=  [len( G.edges(n)) for n in G.nodes] ,edge_color= [d['weight']*20 for (u, v, d) in G.edges(data=True)], edge_cmap=plt.cm.Greys, node_cmap=plt.cm.YlGnBu, width = [d['weight']/2 for (u, v, d) in G.edges(data=True)], node_size=[G.support[n]*4 for n in G.nodes], with_labels=True , font_size=5)
+    node_color=  [len( G.edges(n)) for n in G.nodes]
+    edge_color= [d['weight']*20 for (u, v, d) in G.edges(data=True)]
+    width =  [d['weight']/2 for (u, v, d) in G.edges(data=True)]
+    nx.draw( G , node_color= node_color ,edge_color=edge_color, edge_cmap=plt.cm.gray, node_cmap=plt.cm.Spectral, width = width , node_size=[G.support[n]*4 for n in G.nodes], with_labels=True , font_size=5)
     plt.show()
 
 
+# --------------------------------------------------------------------------------
 
 if __name__ == "__main__":
 
@@ -325,4 +317,5 @@ if __name__ == "__main__":
     print( "Maximun lenght of itemset is : ", max_len)
     nb_transaction = len(matrix_bool.index)
 
-    main_apriori( matrix_bool, args.min_support, nb_transaction , args.output, max_len, args.processor)
+
+main_apriori( matrix_bool, args.min_support, nb_transaction , args.output, max_len, args.processor , args.graph)
