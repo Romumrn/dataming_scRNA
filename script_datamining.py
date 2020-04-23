@@ -7,6 +7,10 @@ import numpy as np
 import matplotlib.pyplot as plt
 import networkx as nx
 from multiprocessing import Process, Queue, Pool
+from pyvis.network import Network
+import pickle
+import os
+
 
 # Meta informations.
 __version__ = '1'
@@ -30,8 +34,8 @@ def parse_args(argv):
         type=bool, default=True)
     parser.add_argument(
         '-o', '--output', metavar='str',
-        help='Output file (default name: resultat.txt).',
-        type=str, default='resultat.txt')
+        help='Output directory (default name: results_analyse).',
+        type=str, default='results_analyse')
     parser.add_argument(
         '-l', '--max-length', metavar='int',
         help='Max length of relations (default: infinite).',
@@ -96,9 +100,9 @@ def splitlist(li , n):
     return newli
 
 
-def main_apriori( data, minSupport, nb_transaction, output_file , max_len, processor , graph):
+def main_apriori( data, minSupport, nb_transaction, path_file , max_len, processor , graph):
     print('Lauch new apriori')
-    out = open("RESULTAT.txt", "w")
+    out = open( path+'/results.txt', "w")
     current_lenght = 1
     print( "Generate C"+str(current_lenght))
     list_resultat_all =[]
@@ -118,7 +122,7 @@ def main_apriori( data, minSupport, nb_transaction, output_file , max_len, proce
     print( '    number of itemsets find : ' ,len(list_candidat1))
 
 
-    list_candidat1 =  list_candidat1[:2000] #LINE TEST to compute with x genes only !!!!!!!!!!!!!
+    #list_candidat1 =  list_candidat1[:1000] #LINE TEST to compute with x genes only !!!!!!!!!!!!!
     print( '    new number of itemsets find : ' ,len(list_candidat1))
 
     itemsets_prec = list_candidat1
@@ -134,10 +138,15 @@ def main_apriori( data, minSupport, nb_transaction, output_file , max_len, proce
             list_resultat_all.append( itemset )
             # Write in out file
             out.write( str(itemset)+'\n')
-        if current_lenght == 2 and graph == True:
-            print( "Draw ntework graph")
+        if current_lenght == 2 :
             assoc_rules = calc_assoc_rules(list_resultat_all)
-            print_graph( assoc_rules )
+            #stock into pickles obj dictionnary (can be use later to build a graph)
+            pickle_out = open( path+'/association_rules',"wb")
+            pickle.dump( assoc_rules, pickle_out)
+            pickle_out.close()
+            if graph == True:
+                print( "Draw ntework graph")
+                print_graph( assoc_rules , path)
             
         itemsets_prec = list(map(lambda x: list(x[0]), result) )
     
@@ -161,8 +170,7 @@ def generate_C1(data, minSupport, len_transaction, proc):
     list_item_split = splitlist ( data.columns , proc)
 
     var_pool = []
-    for i in range(proc):
-        print( 'proc. ',i, len(list_item_split[i]) )
+    for i in range(proc): 
         var_pool.append( ( list_item_split[i] , data, minSupport , len_transaction ) )
     
     #calcul 
@@ -171,7 +179,6 @@ def generate_C1(data, minSupport, len_transaction, proc):
     #concatenate lists of results into one list
     results = []
     for subres in res:
-        print( len(subres))
         results = results+subres
 
     pool.close()
@@ -253,36 +260,69 @@ def calc_assoc_rules( list_itemsets):
             'lift' : (item[1]/(dico_item[ item[0][0]]['support']* dico_item[ item[0][1] ]['support']) ) }  
             # confidence : s(X , Y ) / s(X) 
             # lift : S(X , Y ) / S(X)*S(Y)
+    
     return dico_item
 
-def print_graph( asssociation_rules ):
-    G = nx.Graph()
+def print_graph( asssociation_rules , path ):
+    G = Network(height="900px", width="100%", bgcolor="#222222", font_color="white")
     G.support = {}
-    print( asssociation_rules )
     node_list = []
     count_threshold = 0
+    edges_list = []
     for gene in asssociation_rules.keys():
         for gene_link in asssociation_rules[gene].keys():
             if gene_link != 'support' : #le support est enregrister comme une clé dans le dico
-                if asssociation_rules[gene][gene_link]['lift'] >= 1 and asssociation_rules[gene][gene_link]['confidence'] > 0.95:
-                    print( [ gene,gene_link ] )
-                    G.add_edge(gene, gene_link, weight=asssociation_rules[gene][gene_link]['confidence'] )
-                    node_list.extend( [ gene,gene_link ])
+                if asssociation_rules[gene][gene_link]['lift'] >= 1 and asssociation_rules[gene][gene_link]['confidence'] >= 1 :
+                    if gene not in node_list and gene_link not in node_list:
+                        G.add_node(gene )
+                        G.add_node(gene_link)
+                        G.support[gene] = asssociation_rules[gene]['support']
+                        node_list.append( gene)
+                        G.add_edge(gene, gene_link, weight = asssociation_rules[gene][gene_link]['lift'])
+                    elif gene in node_list and gene_link not in node_list:
+                        G.add_node(gene_link)
+                        G.support[gene_link] = asssociation_rules[gene_link]['support']
+                        node_list.append( gene_link)
+                        G.add_edge(gene, gene_link, weight = asssociation_rules[gene][gene_link]['lift'])
+                    elif gene not in node_list and gene_link in node_list:
+                        G.add_node(gene)
+                        G.support[gene] = asssociation_rules[gene_link]['support']
+                        node_list.append( gene)
+                        G.add_edge(gene, gene_link, weight = asssociation_rules[gene][gene_link]['lift'])
+                    else:
+                        G.add_edge(gene, gene_link, weight = asssociation_rules[gene][gene_link]['lift'])
                 else: 
                     count_threshold += 1
     print( "refused link : " , count_threshold)
+        
 
-    #uniq element
-    node_list = list(set(node_list)) 
-    
-    for gene in node_list:
-        G.add_node( gene)
-        G.support[gene] = asssociation_rules[gene]['support']*20
-    node_color=  [len( G.edges(n)) for n in G.nodes]
-    edge_color= [d['weight']*20 for (u, v, d) in G.edges(data=True)]
-    width =  [d['weight']/2 for (u, v, d) in G.edges(data=True)]
-    nx.draw( G , node_color= node_color ,edge_color=edge_color, edge_cmap=plt.cm.gray, node_cmap=plt.cm.Spectral, width = width , node_size=[G.support[n]*4 for n in G.nodes], with_labels=True , font_size=5)
-    plt.show()
+    neighbor_map = G.get_adj_list()
+
+    # add neighbor data to node hover data
+    for node in G.nodes:
+        node["title"] = neighbor_map[node["id"]]
+        node["value"] = len(neighbor_map[node["id"]])
+
+
+    node_color= [node["value"] for n in G.nodes]
+    #edge_color= [d['weight']*20 for (u, v, d) in G.edges(data=True)]
+    #width =  [d['weight']/2 for (u, v, d) in G.edges(data=True)]
+    #nx.draw( G , node_color= node_color , node_cmap=plt.cm.Spectral)
+    #,edge_color=edge_color, edge_cmap=plt.cm.gray,, width = width , node_size=[G.support[n]*4 for n in G.nodes], with_labels=True , font_size=5 
+    G.show(path+"/graphSCRNA.html")
+
+
+
+
+# !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+#AJOUTER DANS ARGPARSE UNE COMMANDE POUR FAIRE SOIT ANALYSE MATRIX SOIT PRINT GRAPH SOIT LES 2
+
+
+# !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+
+
+
 
 
 # --------------------------------------------------------------------------------
@@ -293,12 +333,22 @@ if __name__ == "__main__":
     args = parse_args(sys.argv[1:])
     print(args)
 
+
     #Import dataset in tsv
     df = pd.read_csv(args.input, sep='\t', index_col=0)
 
     #remove row 
     for_removing = args.rowremove.split(',')
     df = df.drop( for_removing ,axis = 1)
+
+    path = args.output
+    try:
+        os.mkdir(path)
+    except OSError:
+        print ("Creation of the directory %s failed" % path)
+    else:
+        print ("Successfully created the directory %s " % path)
+
 
     #transform into boolean matrix
     if args.normalize : 
@@ -318,4 +368,4 @@ if __name__ == "__main__":
     nb_transaction = len(matrix_bool.index)
 
 
-main_apriori( matrix_bool, args.min_support, nb_transaction , args.output, max_len, args.processor , args.graph)
+main_apriori( matrix_bool, args.min_support, nb_transaction , path, max_len, args.processor , args.graph)
