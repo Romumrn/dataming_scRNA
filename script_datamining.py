@@ -37,8 +37,11 @@ def parse_args(argv):
         help='Name of input file. It should be a count matrix with cell in line and gene in collumn in tsf or a JSON file of asso rules',
         type=str)
     parser.add_argument(
-        '-n', '--normalize', action='store_true',
+        '--normalize', action='store_true',
         help='Nedd to normalize matrix (default : false)', default=False)
+    parser.add_argument(
+        '--transpose', action='store_true',
+        help='Need to transpose matrix to have gene in collumn (default : false)', default=False)
     parser.add_argument(
         '-o', '--output', metavar='str',
         help='Output directory (default name: results_analyse).',
@@ -286,7 +289,9 @@ if __name__ == "__main__":
 
     if args.do == 'full' or args.do == 'datamining':
 
+        
         matrixfile = args.input
+        print( 'Loading data from file '+matrixfile)
         if matrixfile.endswith('tsv'):
             #Import dataset in tsv
             df = pd.read_csv( matrixfile, sep='\t', index_col=0)
@@ -296,8 +301,12 @@ if __name__ == "__main__":
         else:
             df = pd.read_csv( matrixfile, sep='\t', index_col=0)
 
+        if args.transpose :
+            print( 'Transpose matrix')
+            df = df.transpose()
         #remove row 
         if args.rowremove:
+            print( 'Remove row', args.rowremove)
             for_removing = args.rowremove.split(',')
             df = df.drop( for_removing ,axis = 1)
 
