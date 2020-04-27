@@ -5,9 +5,7 @@ import argparse
 import sys
 import numpy as np
 import matplotlib.pyplot as plt
-import networkx as nx
 from multiprocessing import Process, Pool
-from pyvis.network import Network
 import json
 import os
 
@@ -271,6 +269,8 @@ def calc_assoc_rules( list_itemsets):
     return dico_item
 
 def print_graph( asssociation_rules , path ):
+    from pyvis.network import Network
+    import networkx as nx
     G = Network(height="900px", width="100%", bgcolor="#222222", font_color="white")
     G.support = {}
     node_list = []
