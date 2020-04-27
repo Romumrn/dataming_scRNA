@@ -103,59 +103,6 @@ def splitlist(li , n):
     newli.append( subli)
     return newli
 
-
-def main_apriori( data, minSupport, nb_transaction, path_file , max_len, processor , graph):
-    print('Lauch new apriori')
-    out = open( path+'/results.txt', "w")
-    current_lenght = 1
-    print( "Generate C"+str(current_lenght))
-    list_resultat_all =[]
-
-    # 1st step : generate list of item who pass the threshold 
-    resultat_C1 = generate_C1(data, minSupport,nb_transaction , processor)
-    
-    list_candidat1 = []
-    for item in resultat_C1:
-        #add resultat to global results list
-        list_resultat_all.append( item )
-        #wirte in file 
-        out.write( str(item)+'\n')
-        #create a list of item who pass the threshold
-        list_candidat1.append( item[0] )
-
-    print( '    number of itemsets find : ' ,len(list_candidat1))
-
-
-    #list_candidat1 =  list_candidat1[:1000] #LINE TEST to compute with x genes only !!!!!!!!!!!!!
-    print( '    new number of itemsets find : ' ,len(list_candidat1))
-
-    itemsets_prec = list_candidat1
-    while current_lenght < max_len:
-        if itemsets_prec == []:
-            print( 'No frequent itemsets avaible')
-            quit()
-        current_lenght += 1
-        print( "Generate C"+str(current_lenght))
-        result = do_apriori_multip( data, list_candidat1, itemsets_prec, minSupport , processor )
-        print( '    number of itemsets find : ' ,len(result))
-        for itemset in result:
-            list_resultat_all.append( itemset )
-            # Write in out file
-            out.write( str(itemset)+'\n')
-        if current_lenght == 2 :
-            assoc_rules = calc_assoc_rules(list_resultat_all)
-            #stock into pickles obj dictionnary (can be use later to build a graph)
-            with open(path+'/association_rules.json', 'w') as filejson:
-                json.dump(assoc_rules, filejson)
-            if graph == True:
-                print( "Draw network graph")
-                print_graph( assoc_rules , path)
-
-        itemsets_prec = list(map(lambda x: list(x[0]), result) )
-    
-    return list_resultat_all
-
-
 def calcsupport( data, item, totlen):
     support =  ( data[ item ].all(axis='columns').sum() ) / nb_transaction
     return support
@@ -337,7 +284,7 @@ if __name__ == "__main__":
     else:
         print ("Successfully created the directory %s " % path)
 
-    if args.do == 'full' or args.do == 'dataming':
+    if args.do == 'full' or args.do == 'datamining':
 
         matrixfile = args.input
         if matrixfile.endswith('tsv'):
@@ -348,7 +295,6 @@ if __name__ == "__main__":
             df = pd.read_csv( matrixfile, sep=',', index_col=0)
         else:
             df = pd.read_csv( matrixfile, sep='\t', index_col=0)
-
 
         #remove row 
         if args.rowremove:
@@ -371,13 +317,60 @@ if __name__ == "__main__":
 
         print( "Maximun lenght of itemset is : ", max_len)
         nb_transaction = len(matrix_bool.index)
-         
-        if args.do == 'datamining':
-            main_apriori( matrix_bool, args.min_support, nb_transaction , path, max_len, args.processor , graph = False)
-        else:
-            main_apriori( matrix_bool, args.min_support, nb_transaction , path, max_len, args.processor , graph = True )
+
+        minSupport = args.min_support
+        
+        processor = args.processor
+
+        print('Lauch new apriori')
+        out = open( path+'/results.txt', "w")
+        current_lenght = 1
+        print( "Generate C"+str(current_lenght))
+        list_resultat_all =[]
+
+        # 1st step : generate list of item who pass the threshold 
+        resultat_C1 = generate_C1(matrix_bool, minSupport, nb_transaction , processor)
+        
+        list_candidat1 = []
+        for item in resultat_C1:
+            #add resultat to global results list
+            list_resultat_all.append( item )
+            #wirte in file 
+            out.write( str(item)+'\n')
+            #create a list of item who pass the threshold
+            list_candidat1.append( item[0] )
+
+        print( '    number of itemsets find : ' ,len(list_candidat1))
+
+        #list_candidat1 =  list_candidat1[:1000] #LINE TEST to compute with x genes only !!!!!!!!!!!!!
+        print( '    new number of itemsets find : ' ,len(list_candidat1))
+
+        itemsets_prec = list_candidat1
+        while current_lenght < max_len:
+            if itemsets_prec == []:
+                print( 'No frequent itemsets avaible')
+                quit()
+            current_lenght += 1
+            print( "Generate C"+str(current_lenght))
+            result = do_apriori_multip( matrix_bool, list_candidat1, itemsets_prec, minSupport , processor )
+            print( '    number of itemsets find : ' ,len(result))
+            for itemset in result:
+                list_resultat_all.append( itemset )
+                # Write in out file
+                out.write( str(itemset)+'\n')
+            if current_lenght == 2 :
+                assoc_rules = calc_assoc_rules(list_resultat_all)
+                #stock into pickles obj dictionnary (can be use later to build a graph)
+                with open(path+'/association_rules.json', 'w') as filejson:
+                    json.dump(assoc_rules, filejson)
+                if args.do == 'full':
+                    print( "Draw network graph")  
+                    print_graph( assoc_rules , path)
+
+            itemsets_prec = list(map(lambda x: list(x[0]), result) )
     
     elif args.do == 'graph':
+        print( "Draw network graph")
         with open( args.input, 'r') as f:
             association_rules = json.load(f)
         print_graph( association_rules , path )
