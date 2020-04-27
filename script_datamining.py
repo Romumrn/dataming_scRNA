@@ -84,7 +84,7 @@ def bool_and_normalize_matrix( dataframe ):
     Take a NON-normalize count matrix and tranform into boolean matrix
     """
     dataframe = dataframe.loc[:, (dataframe != 0).any(axis=0)]
-    print('Normalise')
+    print('Normalise Matrix')
     dataframe = dataframe.applymap( np.log2 )
     dataframe = dataframe / dataframe.max()
     dataframe = (dataframe > dataframe.quantile(0.1) )
