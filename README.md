@@ -1,4 +1,4 @@
 # dataming_scRNA
 Projet of Datamining with single cell RNA sequences 
 
-#in progress 
+This script allowed you to analyze single cell RNA data in order to find realtion between genes and create a network graph of gene expression. Based on the Apriori algorithm, basically used for frequent item set mining and association rule learning over relational databases. It proceeds by identifying the frequent individual items in the database and extending them to larger and larger item sets as long as those item sets appear sufficiently often in the database (in our case an item is a gene and a itemsets i a groupe of genes).

@@ -6,9 +6,9 @@ import sys
 import numpy as np
 import matplotlib.pyplot as plt
 import networkx as nx
-from multiprocessing import Process, Queue, Pool
+from multiprocessing import Process, Pool
 from pyvis.network import Network
-import pickle
+import json
 import os
 
 
@@ -18,20 +18,29 @@ __author__ = 'Romuald marin'
 __author_email__ = 'romuald.mrn@outlook.fr'
 
 
+"""
+ ArgumentParser.add_argument_group(title=None, description=None)
+ ajouter des groupes pour une meilleur comprehension
+"""
+
 def parse_args(argv):
     """
     Parse commandline arguments.
     For exemple : python3 script_datamining.py ../count_matrix -r N_unmapped,N_multimapping,N_noFeature,N_ambiguous -s 0.60 -l 5
     """
-    parser = argparse.ArgumentParser(description='Blabla help...' )
+    parser = argparse.ArgumentParser(description='Choose analyse or if you allrady have a json with association rules you can juste create graph' )
     parser.add_argument(
-        'input', metavar='inpath',
-        help='Name of input file in tsv. It should be a count matrix with cell in line and gene in collumn',
+        'do', choices=['datamining', 'graph', 'full'],
+        help='blabla analyse ou graph',
+        type=str)
+
+    parser.add_argument(
+        '-i','--input',
+        help='Name of input file. It should be a count matrix with cell in line and gene in collumn in tsf or a JSON file of asso rules',
         type=str)
     parser.add_argument(
-        '-n', '--normalize', metavar='bool',
-        help='Matrice no normalize. (default : true)',
-        type=bool, default=True)
+        '-n', '--normalize', action='store_true',
+        help='Nedd to normalize matrix (default : false)', default=False)
     parser.add_argument(
         '-o', '--output', metavar='str',
         help='Output directory (default name: results_analyse).',
@@ -42,11 +51,11 @@ def parse_args(argv):
         type=int, default=None)
     parser.add_argument(
         '-s', '--min-support', metavar='float',
-        help='Minimum support ratio (must be > 0, default: 0.1).',
+        help='Minimum support ratio (must be > 0, default: 0.75).',
         type=float, default=0.1)
     parser.add_argument(
         '-c', '--min-confidence', metavar='float',
-        help='Minimum confidence (default: 0.5).',
+        help='Minimum confidence (default: 0.9).',
         type=float, default=0.5)
     parser.add_argument(
         '-r', '--rowremove', metavar='str',
@@ -56,9 +65,6 @@ def parse_args(argv):
         '-p', '--processor', metavar='int',
         help="Number of processor avaible (improve speed) ",
         type=int, default=1)
-    parser.add_argument(
-        '-g', '--graph',  action='store_true',
-        help="Create  graph " )
     args = parser.parse_args(argv)
     return args
 
@@ -141,13 +147,12 @@ def main_apriori( data, minSupport, nb_transaction, path_file , max_len, process
         if current_lenght == 2 :
             assoc_rules = calc_assoc_rules(list_resultat_all)
             #stock into pickles obj dictionnary (can be use later to build a graph)
-            pickle_out = open( path+'/association_rules',"wb")
-            pickle.dump( assoc_rules, pickle_out)
-            pickle_out.close()
+            with open(path+'/association_rules.json', 'w') as filejson:
+                json.dump(assoc_rules, filejson)
             if graph == True:
-                print( "Draw ntework graph")
+                print( "Draw network graph")
                 print_graph( assoc_rules , path)
-            
+
         itemsets_prec = list(map(lambda x: list(x[0]), result) )
     
     return list_resultat_all
@@ -256,8 +261,10 @@ def calc_assoc_rules( list_itemsets):
         if type(item[0]) == str:
             dico_item[ item[0] ] = { 'support' : item[1] }
         else: 
-            dico_item[ item[0][0] ][ item[0][1] ] = {  'support' : item[1], 'confidence' : (item[1] / dico_item[ item[0][0] ]['support']), 
-            'lift' : (item[1]/(dico_item[ item[0][0]]['support']* dico_item[ item[0][1] ]['support']) ) }  
+            dico_item[ item[0][0] ][ item[0][1] ] = {  
+            'support' : item[1], 
+            'confidence' : item[1] / dico_item[ item[0][0] ]['support'] , 
+            'lift' : item[1]/(dico_item[ item[0][0]]['support']* dico_item[ item[0][1] ]['support'])  }  
             # confidence : s(X , Y ) / s(X) 
             # lift : S(X , Y ) / S(X)*S(Y)
     
@@ -274,18 +281,18 @@ def print_graph( asssociation_rules , path ):
             if gene_link != 'support' : #le support est enregrister comme une clé dans le dico
                 if asssociation_rules[gene][gene_link]['lift'] >= 1 and asssociation_rules[gene][gene_link]['confidence'] >= 1 :
                     if gene not in node_list and gene_link not in node_list:
-                        G.add_node(gene )
-                        G.add_node(gene_link)
+                        G.add_node(gene, title=gene)
+                        G.add_node(gene_link, title=gene_link)
                         G.support[gene] = asssociation_rules[gene]['support']
                         node_list.append( gene)
                         G.add_edge(gene, gene_link, weight = asssociation_rules[gene][gene_link]['lift'])
                     elif gene in node_list and gene_link not in node_list:
-                        G.add_node(gene_link)
+                        G.add_node(gene_link, title=gene_link)
                         G.support[gene_link] = asssociation_rules[gene_link]['support']
                         node_list.append( gene_link)
                         G.add_edge(gene, gene_link, weight = asssociation_rules[gene][gene_link]['lift'])
                     elif gene not in node_list and gene_link in node_list:
-                        G.add_node(gene)
+                        G.add_node(gene, title=gene)
                         G.support[gene] = asssociation_rules[gene_link]['support']
                         node_list.append( gene)
                         G.add_edge(gene, gene_link, weight = asssociation_rules[gene][gene_link]['lift'])
@@ -300,46 +307,27 @@ def print_graph( asssociation_rules , path ):
 
     # add neighbor data to node hover data
     for node in G.nodes:
-        node["title"] = neighbor_map[node["id"]]
+        node["title"] += " Neighbors:<br>" + "<br>".join(neighbor_map[node["id"]])
         node["value"] = len(neighbor_map[node["id"]])
 
-
-    node_color= [node["value"] for n in G.nodes]
+    #node_color= [node["value"] for n in G.nodes]
     #edge_color= [d['weight']*20 for (u, v, d) in G.edges(data=True)]
     #width =  [d['weight']/2 for (u, v, d) in G.edges(data=True)]
     #nx.draw( G , node_color= node_color , node_cmap=plt.cm.Spectral)
     #,edge_color=edge_color, edge_cmap=plt.cm.gray,, width = width , node_size=[G.support[n]*4 for n in G.nodes], with_labels=True , font_size=5 
+    #G.show_buttons(filter_=['nodes', 'edges', 'physics'])
+
     G.show(path+"/graphSCRNA.html")
-
-
-
-
-# !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-#AJOUTER DANS ARGPARSE UNE COMMANDE POUR FAIRE SOIT ANALYSE MATRIX SOIT PRINT GRAPH SOIT LES 2
-
-
-# !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-
-
-
-
 
 
 # --------------------------------------------------------------------------------
 
 if __name__ == "__main__":
 
+
     #parse arguments given
     args = parse_args(sys.argv[1:])
     print(args)
-
-
-    #Import dataset in tsv
-    df = pd.read_csv(args.input, sep='\t', index_col=0)
-
-    #remove row 
-    for_removing = args.rowremove.split(',')
-    df = df.drop( for_removing ,axis = 1)
 
     path = args.output
     try:
@@ -349,23 +337,47 @@ if __name__ == "__main__":
     else:
         print ("Successfully created the directory %s " % path)
 
+    if args.do == 'full' or args.do == 'dataming':
 
-    #transform into boolean matrix
-    if args.normalize : 
-        matrix_bool = bool_and_normalize_matrix( df )
-    else :
-        matrix_bool = bool_matrix( df )
-
-    print(matrix_bool.head())
-
-    #define max len 
-    if args.max_length:
-        max_len = args.max_length
-    else:
-        max_len = len(matrix_bool.columns )
-
-    print( "Maximun lenght of itemset is : ", max_len)
-    nb_transaction = len(matrix_bool.index)
+        matrixfile = args.input
+        if matrixfile.endswith('tsv'):
+            #Import dataset in tsv
+            df = pd.read_csv( matrixfile, sep='\t', index_col=0)
+        elif matrixfile.endswith('csv'):
+            #Import dataset in tsv
+            df = pd.read_csv( matrixfile, sep=',', index_col=0)
+        else:
+            df = pd.read_csv( matrixfile, sep='\t', index_col=0)
 
 
-main_apriori( matrix_bool, args.min_support, nb_transaction , path, max_len, args.processor , args.graph)
+        #remove row 
+        if args.rowremove:
+            for_removing = args.rowremove.split(',')
+            df = df.drop( for_removing ,axis = 1)
+
+        #transform into boolean matrix
+        if args.normalize : 
+            matrix_bool = bool_and_normalize_matrix( df )
+        else :
+            matrix_bool = bool_matrix( df )
+
+        print(matrix_bool.head())
+
+        #define max len 
+        if args.max_length:
+            max_len = args.max_length
+        else:
+            max_len = len(matrix_bool.columns )
+
+        print( "Maximun lenght of itemset is : ", max_len)
+        nb_transaction = len(matrix_bool.index)
+         
+        if args.do == 'datamining':
+            main_apriori( matrix_bool, args.min_support, nb_transaction , path, max_len, args.processor , graph = False)
+        else:
+            main_apriori( matrix_bool, args.min_support, nb_transaction , path, max_len, args.processor , graph = True )
+    
+    elif args.do == 'graph':
+        with open( args.input, 'r') as f:
+            association_rules = json.load(f)
+        print_graph( association_rules , path )
