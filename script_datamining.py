@@ -24,12 +24,25 @@ __author_email__ = 'romuald.mrn@outlook.fr'
 def parse_args(argv):
     """
     Parse commandline arguments.
-    For exemple : python3 script_datamining.py ../count_matrix -r N_unmapped,N_multimapping,N_noFeature,N_ambiguous -s 0.60 -l 5
     """
-    parser = argparse.ArgumentParser(description='Choose analyse or if you allrady have a json with association rules you can juste create graph' )
+    parser = argparse.ArgumentParser(
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        description='''\
+This scrit allow to realise a datamining analysis with apriori algortyhm. You can choose the number of process to improve the speed. 
+
+You should give a count matrix of this shape : 
+            Gene1   Gene2   Gene3   ... Gene
+        Cell1   0      13   0   ... 0
+        Cell2   0      0   0   ... 0 
+        Cell3   2      13   0   ... 0    
+        
+For exemple : 
+    python3 script_datamining.py full -i ../new_matrix/countmatrix.tsv  -s 0.90 -l 3 -p 4
+    ''')
+
     parser.add_argument(
         'do', choices=['datamining', 'graph', 'full'],
-        help='blabla analyse ou graph',
+        help='Select action to realize : datamanining analysis, only graph compute or full analysis',
         type=str)
 
     parser.add_argument(
@@ -38,7 +51,7 @@ def parse_args(argv):
         type=str)
     parser.add_argument(
         '--normalize', action='store_true',
-        help='Nedd to normalize matrix (default : false)', default=False)
+        help='Need to normalize matrix before analysis (default : false)', default=False)
     parser.add_argument(
         '--transpose', action='store_true',
         help='Need to transpose matrix to have gene in collumn (default : false)', default=False)
@@ -114,8 +127,6 @@ def generate_C1(data, minSupport, len_transaction, proc):
     """
     Take count matrix and min support threshold to return Candidat lenght K = 1 
     """
-    #number of transaction to calc support 
-    c1 = []
 
     #create pool of process
     pool = Pool(processes=proc)
@@ -199,7 +210,7 @@ def do_apriori_multip(data, C1, res_itemsets_prec, min_support, nb_process):
     return results
 
 
-def calc_assoc_rules( list_itemsets):
+def calc_assoc_rules_2( list_itemsets):
     """
     Take results variable and genereate asssociation rules between differents genes
     confidence( X -> Y)= support(X , Y ) / support(X)
@@ -218,18 +229,60 @@ def calc_assoc_rules( list_itemsets):
     
     return dico_item
 
+from functools import reduce  # forward compatibility for Python 3
+import operator
+
+def getFromDict(dataDict, mapList):  
+    for k in mapList: dataDict = dataDict[k]
+    return dataDict
+
+def setInDict(dic, keys, value):
+    for key in keys[:-1]:
+        dic = dic.setdefault(key, {})
+    dic[keys[-1]] = value
+
+#['THOC2','THOC3','THOC4','THOC9'], 0.9857142857142858
+def add_association_rule( dicorules, listtoadd):
+    for iteminlist in listtoadd:
+        list_item = iteminlist[0]
+        support = iteminlist[1]
+
+        dic_list = list_item[:-1]
+        dic_list.append('support')
+        confidence = support / getFromDict(dicorules, dic_list)
+
+        setInDict(dicorules, list_item, {'support' : support , 'confidence': confidence } )
+
+    return dicorules
+
+def color_generator( numberfloat , limite ):
+    # 0.8714285714285714 
+
+    R = 0
+    G = 500
+    B = 100
+
+    numberfloat = int ( (numberfloat - limite) * 6000 )
+    for i in range(numberfloat ):
+        if G < 220:
+            G += 1
+        else:
+            B += 1
+
+    return '#%02x%02x%02x' % (R,G,B)
+
 def print_graph( asssociation_rules , path ):
     from pyvis.network import Network
     import networkx as nx
+
     G = Network(height="900px", width="100%", bgcolor="#222222", font_color="white")
     G.support = {}
     node_list = []
     count_threshold = 0
-    edges_list = []
     for gene in asssociation_rules.keys():
         for gene_link in asssociation_rules[gene].keys():
             if gene_link != 'support' : #le support est enregrister comme une clé dans le dico
-                if asssociation_rules[gene][gene_link]['lift'] >= 1 and asssociation_rules[gene][gene_link]['confidence'] >= 1 :
+                if asssociation_rules[gene][gene_link]['lift'] >= 1 and asssociation_rules[gene][gene_link]['confidence'] > 0.95 :
                     if gene not in node_list and gene_link not in node_list:
                         G.add_node(gene, title=gene)
                         G.add_node(gene_link, title=gene_link)
@@ -267,6 +320,24 @@ def print_graph( asssociation_rules , path ):
     #,edge_color=edge_color, edge_cmap=plt.cm.gray,, width = width , node_size=[G.support[n]*4 for n in G.nodes], with_labels=True , font_size=5 
     #G.show_buttons(filter_=['nodes', 'edges', 'physics'])
 
+    G.set_options("""
+    var options = {
+  "edges": {
+    "color": {
+      "inherit": true
+    },
+    "smooth": false
+  },
+  "physics": {
+    "forceAtlas2Based": {
+      "gravitationalConstant": -70,
+      "springLength": 100
+    },
+    "minVelocity": 0.75,
+    "solver": "forceAtlas2Based"
+  }
+}
+    """)
     G.show(path+"/graphSCRNA.html")
 
 
@@ -367,14 +438,20 @@ if __name__ == "__main__":
                 list_resultat_all.append( itemset )
                 # Write in out file
                 out.write( str(itemset)+'\n')
+
             if current_lenght == 2 :
-                assoc_rules = calc_assoc_rules(list_resultat_all)
-                #stock into pickles obj dictionnary (can be use later to build a graph)
+                assoc_rules = calc_assoc_rules_2(list_resultat_all)
+                #Stock into pickles obj dictionnary (can be use later to build a graph)
                 with open(path+'/association_rules.json', 'w') as filejson:
                     json.dump(assoc_rules, filejson)
                 if args.do == 'full':
                     print( "Draw network graph")  
                     print_graph( assoc_rules , path)
+            
+            if current_lenght > 2 :
+                assoc_rules = add_association_rule(assoc_rules, result)
+                with open(path+'/association_rules.json', 'w') as filejson:
+                    json.dump(assoc_rules, filejson)
 
             itemsets_prec = list(map(lambda x: list(x[0]), result) )
     
