@@ -66,11 +66,11 @@ For exemple :
     parser.add_argument(
         '-s', '--min-support', metavar='float',
         help='Minimum support ratio (must be > 0, default: 0.75).',
-        type=float, default=0.1)
+        type=float, default=0.75)
     parser.add_argument(
         '-c', '--min-confidence', metavar='float',
         help='Minimum confidence (default: 0.9).',
-        type=float, default=0.5)
+        type=float, default=0.9)
     parser.add_argument(
         '-r', '--rowremove', metavar='str',
         help="remove row of matrix for exemple : -r N_unmapped,N_multimapping,ASAT1 ",
@@ -164,27 +164,32 @@ def auto_apriori_process( args_list ):
     Function process 
     """
     #unpack list of arg 
-    (data, C1, itemsets_prec , min_support ) = args_list
+    (data, C1, itemsets_prec , min_support,min_confidence ) = args_list
 
     res = []
-
     for add_new_item in C1:
         for itemset in itemsets_prec:
-            if add_new_item not in itemset:
+            itemsetname = itemset[0]
+
+            if add_new_item not in itemsetname:
                 # if str that mean is the list of C1 for compute lengh 2
-                if type(itemset) == str:
-                    newitem = [itemset , add_new_item ]
+                if type(itemsetname) == str:
+                    newitem = [itemsetname , add_new_item ]
                 else:
-                    newitem = itemset+ [add_new_item]
+                    newitem = itemsetname+ [add_new_item]
+
                 support = calcsupport( data, newitem , nb_transaction )
-                if support >= min_support:
-                    newres = [(newitem) , support ]
+                confidence = support/ itemset[1]
+
+                if support >= min_support and confidence >= min_confidence:
+                    newres = [(newitem) , support, confidence]
                     res.append( newres )
             else:
                 pass
     return res
 
-def do_apriori_multip(data, C1, res_itemsets_prec, min_support, nb_process):
+
+def do_apriori_multip(data, C1, res_itemsets_prec, min_support, min_confidence, nb_process):
     #create pool of process
     pool = Pool(processes=nb_process)
     
@@ -195,7 +200,7 @@ def do_apriori_multip(data, C1, res_itemsets_prec, min_support, nb_process):
     itemsetsplit = splitlist( res_itemsets_prec , nb_process )
 
     for i in range(nb_process):
-        list_var_pool.append( (data, C1, itemsetsplit[i] , min_support ) )
+        list_var_pool.append( (data, C1, itemsetsplit[i] , min_support , min_confidence) )
     
     # Use map - blocks until all processes are done.
 
@@ -222,7 +227,7 @@ def calc_assoc_rules_2( list_itemsets):
         else: 
             dico_item[ item[0][0] ][ item[0][1] ] = {  
             'support' : item[1], 
-            'confidence' : item[1] / dico_item[ item[0][0] ]['support'] , 
+            'confidence' : item[2] , 
             'lift' : item[1]/(dico_item[ item[0][0]]['support']* dico_item[ item[0][1] ]['support'])  }  
             # confidence : s(X , Y ) / s(X) 
             # lift : S(X , Y ) / S(X)*S(Y)
@@ -246,10 +251,11 @@ def add_association_rule( dicorules, listtoadd):
     for iteminlist in listtoadd:
         list_item = iteminlist[0]
         support = iteminlist[1]
+        confidence = iteminlist[2]
 
         dic_list = list_item[:-1]
         dic_list.append('support')
-        confidence = support / getFromDict(dicorules, dic_list)
+        dic_list.append('confidence')
 
         setInDict(dicorules, list_item, {'support' : support , 'confidence': confidence } )
 
@@ -271,7 +277,7 @@ def color_generator( numberfloat , limite ):
 
     return '#%02x%02x%02x' % (R,G,B)
 
-def print_graph( asssociation_rules , path ):
+def print_graph( asssociation_rules , path , minconf ):
     from pyvis.network import Network
     import networkx as nx
 
@@ -282,7 +288,12 @@ def print_graph( asssociation_rules , path ):
     for gene in asssociation_rules.keys():
         for gene_link in asssociation_rules[gene].keys():
             if gene_link != 'support' : #le support est enregrister comme une clé dans le dico
-                if asssociation_rules[gene][gene_link]['lift'] >= 1 and asssociation_rules[gene][gene_link]['confidence'] > 0.95 :
+                #remove too hight support 
+                """ if asssociation_rules[gene]['support'] > 0.9 or asssociation_rules[gene_link]['support'] > 0.9 :
+                    #print(gene, asssociation_rules[gene]['support'], gene_link, asssociation_rules[gene_link]['support'])
+                    continue"""
+
+                if asssociation_rules[gene][gene_link]['lift'] >= 1 and asssociation_rules[gene][gene_link]['confidence'] >= minconf :
                     if gene not in node_list and gene_link not in node_list:
                         G.add_node(gene, title=gene)
                         G.add_node(gene_link, title=gene_link)
@@ -360,7 +371,6 @@ if __name__ == "__main__":
 
     if args.do == 'full' or args.do == 'datamining':
 
-        
         matrixfile = args.input
         print( 'Loading data from file '+matrixfile)
         if matrixfile.endswith('tsv'):
@@ -399,7 +409,7 @@ if __name__ == "__main__":
         nb_transaction = len(matrix_bool.index)
 
         minSupport = args.min_support
-        
+        minConf = args.min_confidence
         processor = args.processor
 
         print('Lauch new apriori')
@@ -411,6 +421,7 @@ if __name__ == "__main__":
         # 1st step : generate list of item who pass the threshold 
         resultat_C1 = generate_C1(matrix_bool, minSupport, nb_transaction , processor)
         
+        C1 = []
         list_candidat1 = []
         for item in resultat_C1:
             #add resultat to global results list
@@ -418,7 +429,8 @@ if __name__ == "__main__":
             #wirte in file 
             out.write( str(item)+'\n')
             #create a list of item who pass the threshold
-            list_candidat1.append( item[0] )
+            list_candidat1.append( item )
+            C1.append( item[0])
 
         print( '    number of itemsets find : ' ,len(list_candidat1))
 
@@ -426,13 +438,14 @@ if __name__ == "__main__":
         print( '    new number of itemsets find : ' ,len(list_candidat1))
 
         itemsets_prec = list_candidat1
+
         while current_lenght < max_len:
             if itemsets_prec == []:
                 print( 'No frequent itemsets avaible')
                 quit()
             current_lenght += 1
             print( "Generate C"+str(current_lenght))
-            result = do_apriori_multip( matrix_bool, list_candidat1, itemsets_prec, minSupport , processor )
+            result = do_apriori_multip( matrix_bool, C1, itemsets_prec, minSupport , minConf, processor )
             print( '    number of itemsets find : ' ,len(result))
             for itemset in result:
                 list_resultat_all.append( itemset )
@@ -446,17 +459,18 @@ if __name__ == "__main__":
                     json.dump(assoc_rules, filejson)
                 if args.do == 'full':
                     print( "Draw network graph")  
-                    print_graph( assoc_rules , path)
+                    print_graph( assoc_rules , path, args.min_confidence)
             
             if current_lenght > 2 :
                 assoc_rules = add_association_rule(assoc_rules, result)
                 with open(path+'/association_rules.json', 'w') as filejson:
                     json.dump(assoc_rules, filejson)
 
-            itemsets_prec = list(map(lambda x: list(x[0]), result) )
+            itemsets_prec = result
+            #itemsets_prec = list(map(lambda x: list(x[0]), result) )
     
     elif args.do == 'graph':
         print( "Draw network graph")
         with open( args.input, 'r') as f:
             association_rules = json.load(f)
-        print_graph( association_rules , path )
+        print_graph( association_rules , path, args.min_confidence )
