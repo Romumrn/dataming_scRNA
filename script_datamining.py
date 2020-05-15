@@ -65,8 +65,13 @@ For exemple :
         type=int, default=None)
     parser.add_argument(
         '-s', '--min-support', metavar='float',
-        help='Minimum support ratio (must be > 0, default: 0.75).',
-        type=float, default=0.75)
+        help='Minimum support ratio (must be > 0, default: 0.5).',
+        type=float, default=0.5)
+    parser.add_argument(
+        '-t', '--max-support', metavar='float',
+        help='Maximum support ratio (must be < 1 , default: 0.95). In order to remove gene who express in all cells',
+        type=float, default=0.95)
+
     parser.add_argument(
         '-c', '--min-confidence', metavar='float',
         help='Minimum confidence (default: 0.9).',
@@ -123,7 +128,7 @@ def calcsupport( data, item, totlen):
     support =  ( data[ item ].all(axis='columns').sum() ) / nb_transaction
     return support
 
-def generate_C1(data, minSupport, len_transaction, proc):
+def generate_C1(data, minSupport, maxSupport, len_transaction, proc):
     """
     Take count matrix and min support threshold to return Candidat lenght K = 1 
     """
@@ -135,7 +140,7 @@ def generate_C1(data, minSupport, len_transaction, proc):
 
     var_pool = []
     for i in range(proc): 
-        var_pool.append( ( list_item_split[i] , data, minSupport , len_transaction ) )
+        var_pool.append( ( list_item_split[i] , data, minSupport ,maxSupport, len_transaction ) )
     
     #calcul 
     res = pool.map( processC1, var_pool ) 
@@ -150,12 +155,16 @@ def generate_C1(data, minSupport, len_transaction, proc):
     return results
 
 def processC1( args ):
-    ( liitem, data, minSupport, len_transaction  ) = args
+    ( liitem, data, minSupport,maxSupport, len_transaction  ) = args
     res = []
     for i in liitem:
         support_values = data[i].sum() / len_transaction
         if support_values >= minSupport :
-            res.append(  [ (i) , support_values ] )
+            if support_values > maxSupport : 
+                print( "    refused :",i , support_values)
+            else: 
+                res.append(  [ (i) , support_values ] )
+
     return res
 
 
@@ -409,6 +418,7 @@ if __name__ == "__main__":
         nb_transaction = len(matrix_bool.index)
 
         minSupport = args.min_support
+        maxSupport = args.max_support
         minConf = args.min_confidence
         processor = args.processor
 
@@ -419,7 +429,7 @@ if __name__ == "__main__":
         list_resultat_all =[]
 
         # 1st step : generate list of item who pass the threshold 
-        resultat_C1 = generate_C1(matrix_bool, minSupport, nb_transaction , processor)
+        resultat_C1 = generate_C1(matrix_bool, minSupport, maxSupport, nb_transaction , processor)
         
         C1 = []
         list_candidat1 = []
