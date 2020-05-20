@@ -87,6 +87,12 @@ For exemple :
     args = parser.parse_args(argv)
     return args
 
+def printandlog( openfile , *a):
+    print( *a)
+    for e in a:
+        log.write( str(e)+'\n')
+
+
 def bool_matrix( dataframe ):
     """
     Take a normalize count matrix and tranform into boolean matrix
@@ -102,7 +108,7 @@ def bool_and_normalize_matrix( dataframe ):
     Take a NON-normalize count matrix and tranform into boolean matrix
     """
     dataframe = dataframe.loc[:, (dataframe != 0).any(axis=0)]
-    print('Normalise Matrix')
+    printandlog( log, 'Normalise Matrix')
     dataframe = dataframe.applymap( np.log2 )
     dataframe = dataframe / dataframe.max()
     dataframe = (dataframe > dataframe.quantile(0.1) )
@@ -161,7 +167,7 @@ def processC1( args ):
         support_values = data[i].sum() / len_transaction
         if support_values >= minSupport :
             if support_values > maxSupport : 
-                print( "    refused :",i , support_values)
+                printandlog( log , "    refused :",i , support_values)
             else: 
                 res.append(  [ (i) , support_values ] )
 
@@ -221,10 +227,26 @@ def do_apriori_multip(data, C1, res_itemsets_prec, min_support, min_confidence, 
 
     pool.close()
 
+    printandlog( log , "    Remove clone. Old number : ", len(results))
+    results = uniqlist(results)
+    printandlog( log , "        New number : ", len(results))
     return results
 
+    """
+    take a list of results and remove clone
+    """
 
-def calc_assoc_rules_2( list_itemsets):
+def uniqlist(li):
+    li2 = list(map(lambda x: [sorted(x[0]), x[1], x[2]] , li))
+    litest = []
+    lireturn = []
+    for i in li2:
+        if str(i[0]) not in litest:
+            litest.append( str(i[0]))
+            lireturn.append( i )
+    return lireturn
+
+def calc_assoc_rules_2( list_itemsets ):
     """
     Take results variable and genereate asssociation rules between differents genes
     confidence( X -> Y)= support(X , Y ) / support(X)
@@ -299,7 +321,7 @@ def print_graph( asssociation_rules , path , minconf ):
             if gene_link != 'support' : #le support est enregrister comme une clé dans le dico
                 #remove too hight support 
                 """ if asssociation_rules[gene]['support'] > 0.9 or asssociation_rules[gene_link]['support'] > 0.9 :
-                    #print(gene, asssociation_rules[gene]['support'], gene_link, asssociation_rules[gene_link]['support'])
+                    #printandlog( log ,gene, asssociation_rules[gene]['support'], gene_link, asssociation_rules[gene_link]['support'])
                     continue"""
 
                 if asssociation_rules[gene][gene_link]['lift'] >= 1 and asssociation_rules[gene][gene_link]['confidence'] >= minconf :
@@ -323,7 +345,7 @@ def print_graph( asssociation_rules , path , minconf ):
                         G.add_edge(gene, gene_link, weight = asssociation_rules[gene][gene_link]['lift'])
                 else: 
                     count_threshold += 1
-    print( "refused link : " , count_threshold)
+    printandlog( log , "refused link : " , count_threshold)
         
 
     neighbor_map = G.get_adj_list()
@@ -365,12 +387,12 @@ def print_graph( asssociation_rules , path , minconf ):
 
 if __name__ == "__main__":
 
-
+    
     #parse arguments given
     args = parse_args(sys.argv[1:])
-    print(args)
 
     path = args.output
+
     try:
         os.mkdir(path)
     except OSError:
@@ -378,10 +400,14 @@ if __name__ == "__main__":
     else:
         print ("Successfully created the directory %s " % path)
 
-    if args.do == 'full' or args.do == 'datamining':
+    log = open( path+'/log.txt', "w")
+    printandlog( log ,args)
 
+    
+    if args.do == 'full' or args.do == 'datamining':
+    
         matrixfile = args.input
-        print( 'Loading data from file '+matrixfile)
+        printandlog( log , 'Loading data from file '+matrixfile)
         if matrixfile.endswith('tsv'):
             #Import dataset in tsv
             df = pd.read_csv( matrixfile, sep='\t', index_col=0)
@@ -392,11 +418,12 @@ if __name__ == "__main__":
             df = pd.read_csv( matrixfile, sep='\t', index_col=0)
 
         if args.transpose :
-            print( 'Transpose matrix')
+            printandlog( log , 'Transpose matrix')
             df = df.transpose()
         #remove row 
         if args.rowremove:
-            print( 'Remove row', args.rowremove)
+            printandlog( log , 'Remove row', args.rowremove)
+            log.write( args)
             for_removing = args.rowremove.split(',')
             df = df.drop( for_removing ,axis = 1)
 
@@ -406,7 +433,7 @@ if __name__ == "__main__":
         else :
             matrix_bool = bool_matrix( df )
 
-        print(matrix_bool.head())
+        printandlog( log ,matrix_bool.head())
 
         #define max len 
         if args.max_length:
@@ -414,7 +441,7 @@ if __name__ == "__main__":
         else:
             max_len = len(matrix_bool.columns )
 
-        print( "Maximun lenght of itemset is : ", max_len)
+        printandlog( log , "Maximun lenght of itemset is : ", max_len)
         nb_transaction = len(matrix_bool.index)
 
         minSupport = args.min_support
@@ -422,10 +449,10 @@ if __name__ == "__main__":
         minConf = args.min_confidence
         processor = args.processor
 
-        print('Lauch new apriori')
+        printandlog( log ,'Lauch new apriori')
         out = open( path+'/results.txt', "w")
         current_lenght = 1
-        print( "Generate C"+str(current_lenght))
+        printandlog( log , "Generate C"+str(current_lenght))
         list_resultat_all =[]
 
         # 1st step : generate list of item who pass the threshold 
@@ -442,21 +469,21 @@ if __name__ == "__main__":
             list_candidat1.append( item )
             C1.append( item[0])
 
-        print( '    number of itemsets find : ' ,len(list_candidat1))
+        printandlog( log , '    number of itemsets find : ' ,len(list_candidat1))
 
         #list_candidat1 =  list_candidat1[:1000] #LINE TEST to compute with x genes only !!!!!!!!!!!!!
-        print( '    new number of itemsets find : ' ,len(list_candidat1))
+        printandlog( log , '    new number of itemsets find : ' ,len(list_candidat1))
 
         itemsets_prec = list_candidat1
 
         while current_lenght < max_len:
             if itemsets_prec == []:
-                print( 'No frequent itemsets avaible')
+                printandlog( log , 'No frequent itemsets avaible')
                 quit()
             current_lenght += 1
-            print( "Generate C"+str(current_lenght))
+            printandlog( log , "Generate C"+str(current_lenght))
             result = do_apriori_multip( matrix_bool, C1, itemsets_prec, minSupport , minConf, processor )
-            print( '    number of itemsets find : ' ,len(result))
+            printandlog( log , '    number of itemsets find : ' ,len(result))
             for itemset in result:
                 list_resultat_all.append( itemset )
                 # Write in out file
@@ -468,7 +495,7 @@ if __name__ == "__main__":
                 with open(path+'/association_rules.json', 'w') as filejson:
                     json.dump(assoc_rules, filejson)
                 if args.do == 'full':
-                    print( "Draw network graph")  
+                    printandlog( log , "Draw network graph")  
                     print_graph( assoc_rules , path, args.min_confidence)
             
             if current_lenght > 2 :
@@ -480,7 +507,7 @@ if __name__ == "__main__":
             #itemsets_prec = list(map(lambda x: list(x[0]), result) )
     
     elif args.do == 'graph':
-        print( "Draw network graph")
+        printandlog( log , "Draw network graph")
         with open( args.input, 'r') as f:
             association_rules = json.load(f)
         print_graph( association_rules , path, args.min_confidence )
