@@ -8,6 +8,7 @@ import matplotlib.pyplot as plt
 from multiprocessing import Process, Pool
 import json
 import os
+import networkx as nx
 
 
 # Meta informations.
@@ -49,24 +50,30 @@ For exemple :
         '-i','--input',
         help='Name of input file. It should be a count matrix with cell in line and gene in collumn in tsf or a JSON file of asso rules',
         type=str)
+
     parser.add_argument(
         '--normalize', action='store_true',
         help='Need to normalize matrix before analysis (default : false)', default=False)
+
     parser.add_argument(
         '--transpose', action='store_true',
         help='Need to transpose matrix to have gene in collumn (default : false)', default=False)
+
     parser.add_argument(
         '-o', '--output', metavar='str',
         help='Output directory (default name: results_analyse).',
         type=str, default='results_analyse')
+
     parser.add_argument(
         '-l', '--max-length', metavar='int',
         help='Max length of relations (default: infinite).',
         type=int, default=None)
+
     parser.add_argument(
         '-s', '--min-support', metavar='float',
         help='Minimum support ratio (must be > 0, default: 0.5).',
         type=float, default=0.5)
+
     parser.add_argument(
         '-t', '--max-support', metavar='float',
         help='Maximum support ratio (must be < 1 , default: 0.95). In order to remove gene who express in all cells',
@@ -76,14 +83,17 @@ For exemple :
         '-c', '--min-confidence', metavar='float',
         help='Minimum confidence (default: 0.9).',
         type=float, default=0.9)
+
     parser.add_argument(
         '-r', '--rowremove', metavar='str',
         help="remove row of matrix for exemple : -r N_unmapped,N_multimapping,ASAT1 ",
         type=str, default='')
+
     parser.add_argument(
         '-p', '--processor', metavar='int',
         help="Number of processor avaible (improve speed) ",
         type=int, default=1)
+
     args = parser.parse_args(argv)
     return args
 
@@ -102,6 +112,10 @@ def bool_matrix( dataframe ):
     # if value 0 -> false
     dataframe = ( dataframe != 0 )
     return dataframe
+
+def readmtx( ):
+    #https://www.biostars.org/p/312933/
+    return 0
 
 def bool_and_normalize_matrix( dataframe ):
     """
@@ -246,7 +260,7 @@ def uniqlist(li):
             lireturn.append( i )
     return lireturn
 
-def calc_assoc_rules_2( list_itemsets ):
+def calcAssociationRules( list_itemsets ):
     """
     Take results variable and genereate asssociation rules between differents genes
     confidence( X -> Y)= support(X , Y ) / support(X)
@@ -283,12 +297,14 @@ def add_association_rule( dicorules, listtoadd):
         list_item = iteminlist[0]
         support = iteminlist[1]
         confidence = iteminlist[2]
+        try:
+            lift = support / getFromDict(dicorules, list_item[:-1]+['support']) * getFromDict(dicorules, [list_item[-1]]+['support']) 
+            setInDict(dicorules, list_item + ['lift'] , lift )
+        except:
+            print( list_item, list_item[:-1]+['support'], [list_item[-1]]+['support'] )
 
-        dic_list = list_item[:-1]
-        dic_list.append('support')
-        dic_list.append('confidence')
-
-        setInDict(dicorules, list_item, {'support' : support , 'confidence': confidence } )
+        setInDict(dicorules, list_item + ['support'] , support )
+        setInDict(dicorules, list_item + ['confidence'], confidence )
 
     return dicorules
 
@@ -323,31 +339,30 @@ def print_graph( asssociation_rules , path , minconf ):
                 """ if asssociation_rules[gene]['support'] > 0.9 or asssociation_rules[gene_link]['support'] > 0.9 :
                     #printandlog( log ,gene, asssociation_rules[gene]['support'], gene_link, asssociation_rules[gene_link]['support'])
                     continue"""
-
-                if asssociation_rules[gene][gene_link]['lift'] >= 1 and asssociation_rules[gene][gene_link]['confidence'] >= minconf :
-                    if gene not in node_list and gene_link not in node_list:
-                        G.add_node(gene, title=gene)
-                        G.add_node(gene_link, title=gene_link)
-                        G.support[gene] = asssociation_rules[gene]['support']
-                        node_list.append( gene)
-                        G.add_edge(gene, gene_link, weight = asssociation_rules[gene][gene_link]['lift'])
-                    elif gene in node_list and gene_link not in node_list:
-                        G.add_node(gene_link, title=gene_link)
-                        G.support[gene_link] = asssociation_rules[gene_link]['support']
-                        node_list.append( gene_link)
-                        G.add_edge(gene, gene_link, weight = asssociation_rules[gene][gene_link]['lift'])
-                    elif gene not in node_list and gene_link in node_list:
-                        G.add_node(gene, title=gene)
-                        G.support[gene] = asssociation_rules[gene_link]['support']
-                        node_list.append( gene)
-                        G.add_edge(gene, gene_link, weight = asssociation_rules[gene][gene_link]['lift'])
-                    else:
-                        G.add_edge(gene, gene_link, weight = asssociation_rules[gene][gene_link]['lift'])
-                else: 
-                    count_threshold += 1
+                if 'lift' in asssociation_rules[gene][gene_link].keys():
+                    if asssociation_rules[gene][gene_link]['lift'] >= 1 and asssociation_rules[gene][gene_link]['confidence'] >= minconf :
+                        if gene not in node_list and gene_link not in node_list:
+                            G.add_node(gene, title=gene)
+                            G.add_node(gene_link, title=gene_link)
+                            G.support[gene] = asssociation_rules[gene]['support']
+                            node_list.append( gene)
+                            G.add_edge(gene, gene_link, weight = asssociation_rules[gene][gene_link]['lift'])
+                        elif gene in node_list and gene_link not in node_list:
+                            G.add_node(gene_link, title=gene_link)
+                            G.support[gene_link] = asssociation_rules[gene_link]['support']
+                            node_list.append( gene_link)
+                            G.add_edge(gene, gene_link, weight = asssociation_rules[gene][gene_link]['lift'])
+                        elif gene not in node_list and gene_link in node_list:
+                            G.add_node(gene, title=gene)
+                            G.support[gene] = asssociation_rules[gene_link]['support']
+                            node_list.append( gene)
+                            G.add_edge(gene, gene_link, weight = asssociation_rules[gene][gene_link]['lift'])
+                        else:
+                            G.add_edge(gene, gene_link, weight = asssociation_rules[gene][gene_link]['lift'])
+                    else: 
+                        count_threshold += 1
     printandlog( log , "refused link : " , count_threshold)
-        
-
+    
     neighbor_map = G.get_adj_list()
 
     # add neighbor data to node hover data
@@ -383,6 +398,136 @@ def print_graph( asssociation_rules , path , minconf ):
     G.show(path+"/graphSCRNA.html")
 
 
+def print_graph2( asssociation_rules , path ):
+    G = nx.Graph()
+    G.support = {}
+    node_list = []
+    count_threshold = 0
+
+    for gene in asssociation_rules.keys():
+        for gene_link in asssociation_rules[gene].keys():
+            if gene_link != 'support' : #le support est enregrister comme une clé dans le dico
+                #remove too hight support 
+                """ if asssociation_rules[gene]['support'] > 0.9 or asssociation_rules[gene_link]['support'] > 0.9 :
+                    #printandlog( log ,gene, asssociation_rules[gene]['support'], gene_link, asssociation_rules[gene_link]['support'])
+                    continue"""
+                if 'lift' in asssociation_rules[gene][gene_link].keys():
+                    if asssociation_rules[gene][gene_link]['lift'] >= 1 :
+                        if gene not in node_list and gene_link not in node_list:
+                            G.add_node(gene, title=gene)
+                            G.support[gene] = asssociation_rules[gene]['support']*20
+                            G.add_node(gene_link, title=gene_link)
+                            G.support[gene_link] = asssociation_rules[gene_link]['support']*20
+                            node_list.append( gene_link)
+                            node_list.append( gene)
+                            G.add_edge(gene, gene_link, weight = asssociation_rules[gene][gene_link]['lift'])
+                        elif gene in node_list and gene_link not in node_list:
+                            G.add_node(gene_link, title=gene_link)
+                            G.support[gene_link] = asssociation_rules[gene_link]['support']*20
+                            node_list.append( gene_link)
+                            G.add_edge(gene, gene_link, weight = asssociation_rules[gene][gene_link]['lift'])
+                        elif gene not in node_list and gene_link in node_list:
+                            G.add_node(gene, title=gene)
+                            G.support[gene] = asssociation_rules[gene_link]['support']*20
+                            node_list.append( gene)
+                            G.add_edge(gene, gene_link, weight = asssociation_rules[gene][gene_link]['lift'])
+                        else:
+                            G.add_edge(gene, gene_link, weight = asssociation_rules[gene][gene_link]['lift'])
+                    else: 
+                        count_threshold += 1
+
+    print( "refused link : " , count_threshold)
+
+    #uniq element
+    node_list = list(set(node_list)) 
+    
+    node_color=  [len( G.edges(n)) for n in G.nodes]
+    edge_color= [d['weight']*20 for (u, v, d) in G.edges(data=True)]
+    width =  [d['weight']/2 for (u, v, d) in G.edges(data=True)]
+    nx.draw( G , node_color= node_color ,edge_color=edge_color, edge_cmap=plt.cm.gray, node_cmap=plt.cm.Spectral, width = width , node_size=[G.support[n]*4 for n in G.nodes], with_labels=True , font_size=5)
+    plotpath = path+"/graphSCRNA.pdf"
+    plt.savefig(plotpath)
+    plt.show()
+
+
+def print_graph_profondeur( asssociation_rules , path ):
+    G = nx.Graph()
+    G.support = {}
+    resultatentuple =[]
+    count = 0 
+    dicoedges = {}
+    removecount =0
+    for gene in asssociation_rules.keys():
+        resultatentuple =[]
+        print( count,' / ', len(asssociation_rules.keys()))
+        parcourir( asssociation_rules, [gene], resultatentuple)
+        for i in resultatentuple:
+            for node in i[0]:
+                print(i)
+                if i[3] > 1:
+                    G.add_node(node, title=node)
+                    G.support[node] = asssociation_rules[node]['support']*20
+                    for node2 in i[0]:
+                        if node == node2:
+                            pass
+                        else:
+                            keyyy = str(sorted([node, node2]))
+                            if keyyy in dicoedges.keys():
+                                dicoedges[ keyyy]['poid'] = dicoedges[ keyyy]['poid'] +1
+                            else:
+                                dicoedges[ keyyy ] = {'node1': sorted([node, node2])[0], 'node2':sorted([node, node2])[1] , 'poid': 1}
+                else:
+                    removecount += 1
+        count+=1
+    print( removecount)
+    maxrelation = 0
+    for edge in dicoedges:
+        G.add_edge( dicoedges[edge]['node1'],dicoedges[edge]['node2'], weight = dicoedges[edge]['poid'])
+        if maxrelation < dicoedges[edge]['poid']:
+            maxrelation = dicoedges[edge]['poid']
+
+
+    node_color= [G.support[n]*4 for n in G.nodes]
+    edge_color= [d['weight']*120/maxrelation for (u, v, d) in G.edges(data=True)]
+    width =  [d['weight']/maxrelation for (u, v, d) in G.edges(data=True)]
+    #nx.draw( G , node_color= node_color ,edge_color=edge_color, edge_cmap=plt.cm.binary, node_cmap=plt.cm.Spectral, width = width , node_size=[len( G.edges(n)) for n in G.nodes], with_labels=True , font_size=3)
+
+    nx.draw( G , node_color= node_color ,node_cmap=plt.cm.Spectral,with_labels=True , font_size=5, width = width )
+
+    plotpath = path+"/graphSCRNA.pdf"
+    plt.savefig(plotpath)
+    plt.show()
+
+
+def parcourir( dico , list_gene, resultatentuple):
+    listkgu = list_gene
+    #forme list [gene1, gene2 ..., support, confidence]
+    #print(listkgu)
+    list_link = [] #A chaque fois la fonction crée une nouvelle liste !!!!!!!!!!!!!!
+    dicornot = True
+    while dicornot:
+        clef_gene = list( getFromDict( dico, listkgu).keys())
+        #print( clef_gene)
+        while len(clef_gene) > 0:
+            new_gene = clef_gene[0]
+            #print(clef_gene)
+            if new_gene in ['lift','confidence','support']:
+                if clef_gene == ['support','confidence','lift']:
+                    #print( 'en cours',listkgu)
+                    conf = getFromDict(dico, listkgu+['confidence'])
+                    supp = getFromDict(dico, listkgu+['support'])
+                    lift = getFromDict(dico, listkgu+['lift'])
+                    return (listkgu , supp, conf,lift)
+            else:
+                #print('in ', listkgu+[new_gene])
+                res = parcourir( dico, listkgu+[new_gene] , resultatentuple)
+                if type(res) is tuple :
+                    resultatentuple.append(res)
+            clef_gene = clef_gene[1:]
+        dicornot = False
+    return list_link
+
+
 # --------------------------------------------------------------------------------
 
 if __name__ == "__main__":
@@ -403,7 +548,6 @@ if __name__ == "__main__":
     log = open( path+'/log.txt', "w")
     printandlog( log ,args)
 
-    
     if args.do == 'full' or args.do == 'datamining':
     
         matrixfile = args.input
@@ -479,7 +623,7 @@ if __name__ == "__main__":
         while current_lenght < max_len:
             if itemsets_prec == []:
                 printandlog( log , 'No frequent itemsets avaible')
-                quit()
+                break
             current_lenght += 1
             printandlog( log , "Generate C"+str(current_lenght))
             result = do_apriori_multip( matrix_bool, C1, itemsets_prec, minSupport , minConf, processor )
@@ -490,24 +634,27 @@ if __name__ == "__main__":
                 out.write( str(itemset)+'\n')
 
             if current_lenght == 2 :
-                assoc_rules = calc_assoc_rules_2(list_resultat_all)
+                assoc_rules = calcAssociationRules(list_resultat_all)
                 #Stock into pickles obj dictionnary (can be use later to build a graph)
                 with open(path+'/association_rules.json', 'w') as filejson:
                     json.dump(assoc_rules, filejson)
                 if args.do == 'full':
                     printandlog( log , "Draw network graph")  
-                    print_graph( assoc_rules , path, args.min_confidence)
-            
+                    #print_graph( assoc_rules , path, args.min_confidence)
+                    #print_graph2( assoc_rules , path)
+
             if current_lenght > 2 :
                 assoc_rules = add_association_rule(assoc_rules, result)
                 with open(path+'/association_rules.json', 'w') as filejson:
                     json.dump(assoc_rules, filejson)
 
             itemsets_prec = result
-            #itemsets_prec = list(map(lambda x: list(x[0]), result) )
+        print_graph_profondeur( assoc_rules , path)
     
     elif args.do == 'graph':
         printandlog( log , "Draw network graph")
         with open( args.input, 'r') as f:
             association_rules = json.load(f)
-        print_graph( association_rules , path, args.min_confidence )
+        #print_graph( association_rules , path, args.min_confidence )
+        #print_graph2( association_rules , path)
+        print_graph_profondeur( association_rules , path)
