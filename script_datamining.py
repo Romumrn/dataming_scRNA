@@ -447,7 +447,7 @@ def print_graph2( asssociation_rules , path ):
     nx.draw( G , node_color= node_color ,edge_color=edge_color, edge_cmap=plt.cm.gray, node_cmap=plt.cm.Spectral, width = width , node_size=[G.support[n]*4 for n in G.nodes], with_labels=True , font_size=5)
     plotpath = path+"/graphSCRNA.pdf"
     plt.savefig(plotpath)
-    plt.show()
+    #plt.show()
 
 
 def print_graph_profondeur( asssociation_rules , path ):
@@ -459,11 +459,11 @@ def print_graph_profondeur( asssociation_rules , path ):
     removecount =0
     for gene in asssociation_rules.keys():
         resultatentuple =[]
-        print( count,' / ', len(asssociation_rules.keys()))
+        #print( count,' / ', len(asssociation_rules.keys()))
         parcourir( asssociation_rules, [gene], resultatentuple)
         for i in resultatentuple:
             for node in i[0]:
-                print(i)
+                #print(i)
                 if i[3] > 1:
                     G.add_node(node, title=node)
                     G.support[node] = asssociation_rules[node]['support']*20
@@ -479,7 +479,7 @@ def print_graph_profondeur( asssociation_rules , path ):
                 else:
                     removecount += 1
         count+=1
-    print( removecount)
+    print( 'remove :',removecount)
     maxrelation = 0
     for edge in dicoedges:
         G.add_edge( dicoedges[edge]['node1'],dicoedges[edge]['node2'], weight = dicoedges[edge]['poid'])
@@ -492,9 +492,9 @@ def print_graph_profondeur( asssociation_rules , path ):
     width =  [d['weight']/maxrelation for (u, v, d) in G.edges(data=True)]
     #nx.draw( G , node_color= node_color ,edge_color=edge_color, edge_cmap=plt.cm.binary, node_cmap=plt.cm.Spectral, width = width , node_size=[len( G.edges(n)) for n in G.nodes], with_labels=True , font_size=3)
 
-    nx.draw( G , node_color= node_color ,node_cmap=plt.cm.Spectral,with_labels=True , font_size=5, width = width )
+    #nx.draw( G , node_color= node_color ,node_cmap=plt.cm.Spectral,with_labels=True , font_size=5, width = width )
 
-    plotpath = path+"/graphSCRNA.pdf"
+    plotpath = path+"/graphSCRNAdeep.pdf"
     plt.savefig(plotpath)
     plt.show()
 
@@ -641,7 +641,7 @@ if __name__ == "__main__":
                 if args.do == 'full':
                     printandlog( log , "Draw network graph")  
                     #print_graph( assoc_rules , path, args.min_confidence)
-                    #print_graph2( assoc_rules , path)
+                    print_graph2( assoc_rules , path)
 
             if current_lenght > 2 :
                 assoc_rules = add_association_rule(assoc_rules, result)
