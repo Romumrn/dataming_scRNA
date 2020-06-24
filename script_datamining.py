@@ -17,11 +17,6 @@ __author__ = 'Romuald marin'
 __author_email__ = 'romuald.mrn@outlook.fr'
 
 
-"""
- ArgumentParser.add_argument_group(title=None, description=None)
- ajouter des groupes pour une meilleur comprehension
-"""
-
 def parse_args(argv):
     """
     Parse commandline arguments.
@@ -29,16 +24,19 @@ def parse_args(argv):
     parser = argparse.ArgumentParser(
         formatter_class=argparse.RawDescriptionHelpFormatter,
         description='''\
-This scrit allow to realise a datamining analysis with apriori algortyhm. You can choose the number of process to improve the speed. 
+This scrit was writed to create gene network expression with a methode of datamining (apriori algorithm). 
+Differentes threeshold can be applied : maximun support, minimum support, minimum confidence ...
+You can also choose the number of process to improve the speed. 
 
-You should give a count matrix of this shape : 
+
+You should give a count matrix (.tsv or .csv) of this shape : 
             Gene1   Gene2   Gene3   ... Gene
         Cell1   0      13   0   ... 0
         Cell2   0      0   0   ... 0 
         Cell3   2      13   0   ... 0    
         
 For exemple : 
-    python3 script_datamining.py full -i ../new_matrix/countmatrix.tsv  -s 0.90 -l 3 -p 4
+    python3 script_datamining.py full -i matrix.csv  -o my_results_out -p 4 -l 4
     ''')
 
     parser.add_argument(
@@ -66,18 +64,18 @@ For exemple :
 
     parser.add_argument(
         '-l', '--max-length', metavar='int',
-        help='Max length of relations (default: infinite).',
-        type=int, default=None)
+        help='Max length of relations (default: 4).',
+        type=int, default=4)
 
     parser.add_argument(
         '-s', '--min-support', metavar='float',
-        help='Minimum support ratio (must be > 0, default: 0.5).',
-        type=float, default=0.5)
+        help='Minimum support ratio (must be > 0, default: 0.3).',
+        type=float, default=0.3)
 
     parser.add_argument(
         '-t', '--max-support', metavar='float',
-        help='Maximum support ratio (must be < 1 , default: 0.95). In order to remove gene who express in all cells',
-        type=float, default=0.95)
+        help='Maximum support ratio (must be < 1 , default: 0.8). In order to remove too express gene (who express in all cells)',
+        type=float, default=0.8)
 
     parser.add_argument(
         '-c', '--min-confidence', metavar='float',
@@ -86,18 +84,21 @@ For exemple :
 
     parser.add_argument(
         '-r', '--rowremove', metavar='str',
-        help="remove row of matrix for exemple : -r N_unmapped,N_multimapping,ASAT1 ",
+        help="remove row of matrix (allow to remove useless gene), for exemple : -r MT-gene1, MT-gene2 ",
         type=str, default='')
 
     parser.add_argument(
         '-p', '--processor', metavar='int',
-        help="Number of processor avaible (improve speed) ",
+        help="Number of processor avaible (improve compute time) ",
         type=int, default=1)
 
     args = parser.parse_args(argv)
     return args
 
 def printandlog( openfile , *a):
+    """
+    Print and write into log file
+    """
     print( *a)
     for e in a:
         log.write( str(e)+'\n')
@@ -114,23 +115,25 @@ def bool_matrix( dataframe ):
     return dataframe
 
 def readmtx( ):
+    """
+    To finish take mtx format
+    """
     #https://www.biostars.org/p/312933/
     return 0
 
 def bool_and_normalize_matrix( dataframe ):
     """
     Take a NON-normalize count matrix and tranform into boolean matrix
+    low count value -> false
     """
     dataframe = dataframe.loc[:, (dataframe != 0).any(axis=0)]
     printandlog( log, 'Normalise Matrix')
-    dataframe = dataframe.applymap( np.log2 )
-    dataframe = dataframe / dataframe.max()
-    dataframe = (dataframe > dataframe.quantile(0.1) )
+    dataframe = (dataframe > dataframe.quantile(0.01) )
     return dataframe
 
 def splitlist(li , n):
     """
-    Take a list and return a new list compost of sub list with equal number of element when it's possible
+    Take a list and return a new list compose of sub list with equal number of element when it's possible
     """
     newli = []
     div = int ( len(li) / n )
@@ -145,6 +148,9 @@ def splitlist(li , n):
     return newli
 
 def calcsupport( data, item, totlen):
+    """
+    Calcul support value
+    """
     support =  ( data[ item ].all(axis='columns').sum() ) / nb_transaction
     return support
 
@@ -175,6 +181,9 @@ def generate_C1(data, minSupport, maxSupport, len_transaction, proc):
     return results
 
 def processC1( args ):
+    """
+
+    """
     ( liitem, data, minSupport,maxSupport, len_transaction  ) = args
     res = []
     for i in liitem:
@@ -282,11 +291,17 @@ def calcAssociationRules( list_itemsets ):
 from functools import reduce  # forward compatibility for Python 3
 import operator
 
-def getFromDict(dataDict, mapList):  
+def getFromDict(dataDict, mapList):
+    """
+    Find value in dictionnary
+    """
     for k in mapList: dataDict = dataDict[k]
     return dataDict
 
 def setInDict(dic, keys, value):
+    """
+    Put new value in dictionnary
+    """
     for key in keys[:-1]:
         dic = dic.setdefault(key, {})
     dic[keys[-1]] = value
@@ -308,23 +323,7 @@ def add_association_rule( dicorules, listtoadd):
 
     return dicorules
 
-def color_generator( numberfloat , limite ):
-    # 0.8714285714285714 
-
-    R = 0
-    G = 500
-    B = 100
-
-    numberfloat = int ( (numberfloat - limite) * 6000 )
-    for i in range(numberfloat ):
-        if G < 220:
-            G += 1
-        else:
-            B += 1
-
-    return '#%02x%02x%02x' % (R,G,B)
-
-def print_graph( asssociation_rules , path , minconf ):
+def print_graph_web( asssociation_rules , path , minconf ):
     from pyvis.network import Network
     import networkx as nx
 
@@ -406,11 +405,8 @@ def print_graph2( asssociation_rules , path ):
 
     for gene in asssociation_rules.keys():
         for gene_link in asssociation_rules[gene].keys():
-            if gene_link != 'support' : #le support est enregrister comme une clé dans le dico
+            if gene_link != 'support' :
                 #remove too hight support 
-                """ if asssociation_rules[gene]['support'] > 0.9 or asssociation_rules[gene_link]['support'] > 0.9 :
-                    #printandlog( log ,gene, asssociation_rules[gene]['support'], gene_link, asssociation_rules[gene_link]['support'])
-                    continue"""
                 if 'lift' in asssociation_rules[gene][gene_link].keys():
                     if asssociation_rules[gene][gene_link]['lift'] >= 1 :
                         if gene not in node_list and gene_link not in node_list:
@@ -447,7 +443,7 @@ def print_graph2( asssociation_rules , path ):
     nx.draw( G , node_color= node_color ,edge_color=edge_color, edge_cmap=plt.cm.gray, node_cmap=plt.cm.Spectral, width = width , node_size=[G.support[n]*4 for n in G.nodes], with_labels=True , font_size=5)
     plotpath = path+"/graphSCRNA.pdf"
     plt.savefig(plotpath)
-    #plt.show()
+    plt.show()
 
 
 def print_graph_profondeur( asssociation_rules , path ):
@@ -485,14 +481,13 @@ def print_graph_profondeur( asssociation_rules , path ):
         G.add_edge( dicoedges[edge]['node1'],dicoedges[edge]['node2'], weight = dicoedges[edge]['poid'])
         if maxrelation < dicoedges[edge]['poid']:
             maxrelation = dicoedges[edge]['poid']
-
-
+            
     node_color= [G.support[n]*4 for n in G.nodes]
-    edge_color= [d['weight']*120/maxrelation for (u, v, d) in G.edges(data=True)]
-    width =  [d['weight']/maxrelation for (u, v, d) in G.edges(data=True)]
+    edge_color= [d['weight']*100/maxrelation for (u, v, d) in G.edges(data=True)]
+    width =  [d['weight']/(maxrelation*2) for (u, v, d) in G.edges(data=True)]
     #nx.draw( G , node_color= node_color ,edge_color=edge_color, edge_cmap=plt.cm.binary, node_cmap=plt.cm.Spectral, width = width , node_size=[len( G.edges(n)) for n in G.nodes], with_labels=True , font_size=3)
 
-    #nx.draw( G , node_color= node_color ,node_cmap=plt.cm.Spectral,with_labels=True , font_size=5, width = width )
+    nx.draw( G , node_color= node_color ,edge_cmap=plt.cm.binary,width = width, node_cmap=plt.cm.Spectral,with_labels=True , font_size=5,node_size=[len( G.edges(n))*2 for n in G.nodes] )
 
     plotpath = path+"/graphSCRNAdeep.pdf"
     plt.savefig(plotpath)
@@ -503,7 +498,7 @@ def parcourir( dico , list_gene, resultatentuple):
     listkgu = list_gene
     #forme list [gene1, gene2 ..., support, confidence]
     #print(listkgu)
-    list_link = [] #A chaque fois la fonction crée une nouvelle liste !!!!!!!!!!!!!!
+    list_link = []
     dicornot = True
     while dicornot:
         clef_gene = list( getFromDict( dico, listkgu).keys())
@@ -640,8 +635,9 @@ if __name__ == "__main__":
                     json.dump(assoc_rules, filejson)
                 if args.do == 'full':
                     printandlog( log , "Draw network graph")  
-                    #print_graph( assoc_rules , path, args.min_confidence)
-                    print_graph2( assoc_rules , path)
+                    print_graph_web( assoc_rules , path, args.min_confidence)
+                    #print_graph2( assoc_rules , path)
+                    #print_graph_profondeur( assoc_rules , path)
 
             if current_lenght > 2 :
                 assoc_rules = add_association_rule(assoc_rules, result)
@@ -655,6 +651,6 @@ if __name__ == "__main__":
         printandlog( log , "Draw network graph")
         with open( args.input, 'r') as f:
             association_rules = json.load(f)
-        #print_graph( association_rules , path, args.min_confidence )
+        print_graph_web( association_rules , path, args.min_confidence )
         #print_graph2( association_rules , path)
         print_graph_profondeur( association_rules , path)
