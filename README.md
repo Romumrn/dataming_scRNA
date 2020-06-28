@@ -11,11 +11,13 @@ This script use Apriori algorithm to create assocation rules between each genes.
 
 Apriori algorihm use 3 values : 
 - Support : Fraction of cells who expressed genes (or a group of genes)
-
+    -  Support(gene1) = Number of cells who express gene1 / total cells
 - Confidence :  Fraction of gene expressed if an other gene (or a group of genes) is expressed
+    - Confidence( Gene1 -> gene2 ) = Support( gene1 , gene2 ) / Support (gene1)
 - Lift : Measure of correlation, beetwen a gene and other gene (or groups of genes)
+    - lift(Gene1 -> gene2 ) = Support( gene1 , gene2 ) / Support (gene1 )* Support( gene2)
 
-# Add explication therorique assocation rules et thressold json, graph 
+
 
 ## Script
 
@@ -30,14 +32,21 @@ exemple of count matrix :
 | Cell 3  |  0 |  1300 |  11000 |   0|
 
 
-# Add explication sur le deroulement json, graph 
+Support threeshold allow to control gene frequency, maximum support allow to remove genes who expressed in all cell (default=0.8 ) and minimum support allow to discovered low frequent network (default=0.3).
 
+The graph are created with assocoation bewten gene, gene are node and link are represented with a line.
+
+Different results files are created : 
+- log.txt : contain all informations of script execuction 
+- association_rules.json : contain link betwen gene in json format 
+- results.txt : contain groups of genes in txt format 
+- graf file : representation of assocation between genes
 
 
 
 ## Pre required : 
 
-These packages are required to print nteworkgraph : 
+These packages are required to print network graph : 
 - package networkx (https://networkx.github.io/)
 - package pyvis (https://pyvis.readthedocs.io/en/latest/)
 
@@ -56,7 +65,7 @@ Select input file :
 
 exemple : 
 ```bash
-pyhton script_datamining.py full -i matrixcount.csv
+python script_datamining.py full -i matrixcount.csv
 ```
 
 optional arguments:
